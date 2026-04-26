@@ -15,7 +15,7 @@ const I18N_DICT = {
     opt_save: "Save Settings",
     opt_saved: "Settings saved!",
 
-    ui_header: "MailPilot gmail Assistant",
+    ui_header: "MailPilot",
     btn_optimize: "✨ Optimize",
     btn_translate: "🌐 Translate",
     btn_title: "📝 Optimize Subject",
@@ -41,6 +41,8 @@ const I18N_DICT = {
     backup_restore: "↩ Restore",
     guard_warning: "⚠️ Confirm Send?",
 
+    "minimize_tooltip": "Minimize",   // en
+
     prompt_default_opt:
       "Please rewrite the following content according to business email communication conventions. The tone should be professional, polite, and logically clear. Please remove unnecessary words and overly polite rhetoric, and get straight to the point. When submitting your email, only provide the rewritten body text (excluding the title) so I can use it directly. Please keep the word count under 1500 words.",
     prompt_default_title: "Please generate an email subject based on the content and language of the email body."
@@ -51,15 +53,15 @@ const I18N_DICT = {
     opt_api_key: "Gemini API Key",
     opt_model: "模型",
     opt_update_models: "更新模型",
-    opt_prompt_optimize: "優化內文 Prompt",
+    opt_prompt_optimize: "優化內文提示詞",
     opt_translate_lang: "翻譯目標語言",
-    opt_prompt_title: "優化標題 Prompt",
-    opt_prompt_check: "信件檢查 Prompt (未填則停用)",
-    opt_double_confirm: "Enable Double-Click Send Confirmation (寄信防呆)",
+    opt_prompt_title: "優化標題提示詞",
+    opt_prompt_check: "信件檢查提示詞 (未填寫則停用)",
+    opt_double_confirm: "寄信防呆",
     opt_save: "儲存設定",
     opt_saved: "設定已儲存！",
 
-    ui_header: "MailPilot gmail 助理",
+    ui_header: "MailPilot",
     btn_optimize: "✨ 優化內文",
     btn_translate: "🌐 翻譯內文",
     btn_title: "📝 優化標題",
@@ -74,7 +76,7 @@ const I18N_DICT = {
     msg_error_no_body: "找不到郵件內容區，請先點擊信件內文。",
     msg_error_api: "API 錯誤：",
     msg_error_generic: "發生錯誤：",
-    msg_error_no_check_prompt: "請先在設定中填寫「信件檢查 Prompt」。",
+    msg_error_no_check_prompt: "請先在設定中填寫「信件檢查提示詞」。",
 
     msg_success_opt: "優化完成！",
     msg_success_trans: "已翻譯為",
@@ -85,6 +87,8 @@ const I18N_DICT = {
     backup_restore: "↩ 還原",
     guard_warning: "⚠️ 確認寄出？",
 
+    "minimize_tooltip": "最小化",     // zh_TW
+
     prompt_default_opt: "請依據商務 Email 溝通慣例改寫以下內容。語氣需專業禮貌且邏輯清晰，請刪除不必要的贅字與過度客套的修辭，直接切入重點。輸出時僅需提供改寫後的內文（不含標題），以便我直接貼上使用。字數請在 1500 字內。",
     prompt_default_title: "請根據內文的內容及語系替我產生信件標題"
   },
@@ -94,15 +98,15 @@ const I18N_DICT = {
     opt_api_key: "Gemini API Key",
     opt_model: "模型",
     opt_update_models: "更新模型",
-    opt_prompt_optimize: "优化正文 Prompt",
+    opt_prompt_optimize: "优化正文提示词",
     opt_translate_lang: "翻译目标语言",
-    opt_prompt_title: "优化标题 Prompt",
-    opt_prompt_check: "邮件检查 Prompt (未填则停用)",
-    opt_double_confirm: "Enable Double-Click Send Confirmation (发信防呆)",
+    opt_prompt_title: "优化标题提示词",
+    opt_prompt_check: "邮件检查提示词 (未填写则停用)",
+    opt_double_confirm: "发信防呆",
     opt_save: "保存设置",
     opt_saved: "设置已保存！",
 
-    ui_header: "MailPilot gmail 助手",
+    ui_header: "MailPilot",
     btn_optimize: "✨ 优化正文",
     btn_translate: "🌐 翻译正文",
     btn_title: "📝 优化标题",
@@ -117,7 +121,7 @@ const I18N_DICT = {
     msg_error_no_body: "找不到邮件内容区，请先点击信件正文。",
     msg_error_api: "API 错误：",
     msg_error_generic: "发生错误：",
-    msg_error_no_check_prompt: "请先在设置中填写“邮件检查 Prompt”。",
+    msg_error_no_check_prompt: "请先在设置中填写“邮件检查提示词”。",
 
     msg_success_opt: "优化完成！",
     msg_success_trans: "已翻译为",
@@ -127,6 +131,8 @@ const I18N_DICT = {
     backup_title: "原始备份",
     backup_restore: "↩ 还原",
     guard_warning: "⚠️ 确认发送？",
+
+    "minimize_tooltip": "最小化",     // zh_CN
 
     prompt_default_opt: "请依据商务 Email 沟通惯例改写以下内容。语气需专业礼貌且逻辑清晰，请删除不必要的赘字与过度客套的修辞，直接切入重点。输出时仅需提供改写后的内文（不含标题），以便我直接贴上使用。字数请在 1500 字内。",
     prompt_default_title: "请根据正文的内容及语系替我产生邮件标题"
