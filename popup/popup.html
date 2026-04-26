@@ -1,15 +1,70 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <meta charset="utf-8">
   <style>
-    body { width: 120px; font-family: system-ui, sans-serif; margin: 0; padding: 0; }
-    .menu-item { display: block; width: 100%; padding: 12px; border: none; background: white; text-align: left; cursor: pointer; font-size: 14px; }
-    .menu-item:hover { background: #f0f0f0; }
+    body {
+      width: 160px;
+      font-family: system-ui, sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+
+    .status-area {
+      padding: 12px;
+      font-size: 12px;
+      border-bottom: 1px solid #eee;
+      background: #fafafa;
+    }
+
+    .status-row {
+      margin-bottom: 4px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .status-val {
+      font-weight: 600;
+      color: #1a73e8;
+    }
+
+    .status-missing {
+      color: #d93025;
+    }
+
+    .menu-item {
+      display: block;
+      width: 100%;
+      padding: 12px;
+      border: none;
+      background: white;
+      text-align: left;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .menu-item:hover {
+      background: #f0f0f0;
+    }
   </style>
 </head>
+
 <body>
+  <div class="status-area">
+    <div class="status-row">
+      <span data-i18n="popup_status_key">API Key:</span>
+      <span id="keyStatus" class="status-val">...</span>
+    </div>
+    <div class="status-row">
+      <span data-i18n="popup_status_model">Model:</span>
+      <span id="modelStatus" class="status-val">...</span>
+    </div>
+  </div>
   <button id="settingsBtn" class="menu-item">⚙️ Settings</button>
+
+  <script src="../utils/i18n.js"></script>
   <script src="popup.js"></script>
 </body>
+
 </html>

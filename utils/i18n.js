@@ -1,5 +1,4 @@
 // utils/i18n.js
-
 const I18N_DICT = {
   en: {
     opt_title: "MailPilot Settings",
@@ -7,6 +6,9 @@ const I18N_DICT = {
     opt_api_key: "Gemini API Key",
     opt_model: "Model",
     opt_update_models: "Update Models",
+    opt_fetch_failed: "Fetch Failed",
+    opt_show: "Show",
+    opt_hide: "Hide",
     opt_prompt_optimize: "Optimize Body Prompt",
     opt_translate_lang: "Target Translation Language",
     opt_prompt_title: "Optimize Subject Prompt",
@@ -14,6 +16,11 @@ const I18N_DICT = {
     opt_double_confirm: "Enable Double-Click Send Confirmation",
     opt_save: "Save Settings",
     opt_saved: "Settings saved!",
+
+    popup_status_key: "API Key:",
+    popup_status_model: "Model:",
+    popup_status_set: "Configured",
+    popup_status_missing: "Missing",
 
     ui_header: "MailPilot",
     btn_optimize: "✨ Optimize",
@@ -41,10 +48,9 @@ const I18N_DICT = {
     backup_restore: "↩ Restore",
     guard_warning: "⚠️ Confirm Send?",
 
-    "minimize_tooltip": "Minimize",   // en
+    minimize_tooltip: "Minimize",
 
-    prompt_default_opt:
-      "Please rewrite the following content according to business email communication conventions. The tone should be professional, polite, and logically clear. Please remove unnecessary words and overly polite rhetoric, and get straight to the point. When submitting your email, only provide the rewritten body text (excluding the title) so I can use it directly. Please keep the word count under 1500 words.",
+    prompt_default_opt: "Please rewrite the following content according to business email communication conventions. The tone should be professional, polite, and logically clear. Please remove unnecessary words and overly polite rhetoric, and get straight to the point. When submitting your email, only provide the rewritten body text (excluding the title) so I can use it directly. Please keep the word count under 1500 words.",
     prompt_default_title: "Please generate an email subject based on the content and language of the email body."
   },
   zh_TW: {
@@ -53,6 +59,9 @@ const I18N_DICT = {
     opt_api_key: "Gemini API Key",
     opt_model: "模型",
     opt_update_models: "更新模型",
+    opt_fetch_failed: "取得失敗",
+    opt_show: "顯示",
+    opt_hide: "隱藏",
     opt_prompt_optimize: "優化內文提示詞",
     opt_translate_lang: "翻譯目標語言",
     opt_prompt_title: "優化標題提示詞",
@@ -60,6 +69,11 @@ const I18N_DICT = {
     opt_double_confirm: "寄信防呆",
     opt_save: "儲存設定",
     opt_saved: "設定已儲存！",
+
+    popup_status_key: "API 金鑰：",
+    popup_status_model: "目前模型：",
+    popup_status_set: "已設定",
+    popup_status_missing: "未設定",
 
     ui_header: "MailPilot",
     btn_optimize: "✨ 優化內文",
@@ -87,7 +101,7 @@ const I18N_DICT = {
     backup_restore: "↩ 還原",
     guard_warning: "⚠️ 確認寄出？",
 
-    "minimize_tooltip": "最小化",     // zh_TW
+    minimize_tooltip: "最小化",
 
     prompt_default_opt: "請依據商務 Email 溝通慣例改寫以下內容。語氣需專業禮貌且邏輯清晰，請刪除不必要的贅字與過度客套的修辭，直接切入重點。輸出時僅需提供改寫後的內文（不含標題），以便我直接貼上使用。字數請在 1500 字內。",
     prompt_default_title: "請根據內文的內容及語系替我產生信件標題"
@@ -98,6 +112,9 @@ const I18N_DICT = {
     opt_api_key: "Gemini API Key",
     opt_model: "模型",
     opt_update_models: "更新模型",
+    opt_fetch_failed: "获取失败",
+    opt_show: "显示",
+    opt_hide: "隐藏",
     opt_prompt_optimize: "优化正文提示词",
     opt_translate_lang: "翻译目标语言",
     opt_prompt_title: "优化标题提示词",
@@ -105,6 +122,11 @@ const I18N_DICT = {
     opt_double_confirm: "发信防呆",
     opt_save: "保存设置",
     opt_saved: "设置已保存！",
+
+    popup_status_key: "API 密钥：",
+    popup_status_model: "当前模型：",
+    popup_status_set: "已设置",
+    popup_status_missing: "未设置",
 
     ui_header: "MailPilot",
     btn_optimize: "✨ 优化正文",
@@ -132,7 +154,7 @@ const I18N_DICT = {
     backup_restore: "↩ 还原",
     guard_warning: "⚠️ 确认发送？",
 
-    "minimize_tooltip": "最小化",     // zh_CN
+    minimize_tooltip: "最小化",
 
     prompt_default_opt: "请依据商务 Email 沟通惯例改写以下内容。语气需专业礼貌且逻辑清晰，请删除不必要的赘字与过度客套的修辞，直接切入重点。输出时仅需提供改写后的内文（不含标题），以便我直接贴上使用。字数请在 1500 字内。",
     prompt_default_title: "请根据正文的内容及语系替我产生邮件标题"

@@ -7,12 +7,17 @@
   const I18N = window.i18n || { getMessage: (k) => k };
 
   let enabled = true;
-  chrome.storage.local.get(['enableDoubleConfirm'], data => {
+  let uiLang = 'en';
+
+  chrome.storage.local.get(['enableDoubleConfirm', 'uiLang'], data => {
     enabled = data.enableDoubleConfirm !== false;
+    if (data.uiLang) uiLang = data.uiLang;
   });
+
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && changes.enableDoubleConfirm) {
-      enabled = changes.enableDoubleConfirm.newValue !== false;
+    if (area === 'local') {
+      if (changes.enableDoubleConfirm) enabled = changes.enableDoubleConfirm.newValue !== false;
+      if (changes.uiLang) uiLang = changes.uiLang.newValue;
     }
   });
 
@@ -28,15 +33,6 @@
     buttonStates.delete(btn);
   }
 
-  function cancelIfConfirmed(e) {
-    // 找出所有處於確認狀態的按鈕，若點擊目標不是它們，就取消
-    for (const [btn, state] of (() => {
-      // WeakMap 無法直接迭代，所以改用其他方式記錄
-      // 此處改為在 document 上暫存按鈕陣列
-    })()) { }
-  }
-  // (為了簡化，這裡使用全域的 activeConfirmedButtons Set 來追蹤)
-
   const activeConfirmedButtons = new Set();
 
   document.addEventListener('click', (e) => {
@@ -50,14 +46,14 @@
 
     const state = buttonStates.get(sendBtn);
     if (state && state.confirmed) {
-      // 第二次點擊：放行前先恢復原狀
+      // Second click: restore before letting it pass
       restoreButton(sendBtn);
       activeConfirmedButtons.delete(sendBtn);
       document.removeEventListener('click', cancelExternalClick, true);
       return;
     }
 
-    // 第一次點擊：攔截
+    // First click: intercept
     e.preventDefault();
     e.stopPropagation();
     e.stopImmediatePropagation();
@@ -66,7 +62,7 @@
     const originalBg = sendBtn.style.backgroundColor;
     const originalColor = sendBtn.style.color;
 
-    sendBtn.textContent = I18N.getMessage('guard_warning');
+    sendBtn.textContent = I18N.getMessage('guard_warning', uiLang);
     sendBtn.style.backgroundColor = '#d93025';
     sendBtn.style.color = '#fff';
 
@@ -82,7 +78,7 @@
     });
     activeConfirmedButtons.add(sendBtn);
 
-    // 點擊其他區域取消
+    // Cancel on external click
     const cancelExternalClick = (ev) => {
       if (!sendBtn.contains(ev.target)) {
         restoreButton(sendBtn);

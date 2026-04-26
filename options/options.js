@@ -3,6 +3,18 @@ document.addEventListener('DOMContentLoaded', restoreOptions);
 document.getElementById('saveBtn').addEventListener('click', saveOptions);
 document.getElementById('uiLang').addEventListener('change', onUILanguageChange);
 
+document.getElementById('toggleApiKeyBtn').addEventListener('click', function () {
+    const input = document.getElementById('apiKey');
+    const uiLang = document.getElementById('uiLang').value;
+    if (input.type === 'password') {
+        input.type = 'text';
+        this.textContent = window.i18n.getMessage('opt_hide', uiLang);
+    } else {
+        input.type = 'password';
+        this.textContent = window.i18n.getMessage('opt_show', uiLang);
+    }
+});
+
 function applyI18n(lang) {
     document.querySelectorAll('[data-i18n]').forEach(el => {
         const key = el.getAttribute('data-i18n');
@@ -10,7 +22,6 @@ function applyI18n(lang) {
     });
 }
 
-// 判斷模型是否為可用於文字生成的語言模型
 function isCloudLanguageModel(model) {
     const id = model.name.toLowerCase();
     if (!model.supportedGenerationMethods.includes('generateContent')) return false;
@@ -48,31 +59,37 @@ async function fetchAndPopulateModels(isManual = false) {
         select.disabled = false;
         btn.textContent = window.i18n.getMessage('opt_update_models', uiLang);
     } catch (e) {
-        console.error('模型清單取得失敗:', e);
-        btn.textContent = 'Fetch Failed';
+        console.error('Fetch Failed:', e);
+        btn.textContent = window.i18n.getMessage('opt_fetch_failed', uiLang);
+        // Explicitly leave select disabled if fetch fails so user knows it failed, 
+        // but ensure btn is re-enabled to retry
     } finally {
         btn.disabled = false;
     }
 }
 
-document.getElementById('apiKey').addEventListener('blur', () => fetchAndPopulateModels(false));
+document.getElementById('apiKey').addEventListener('blur', () => {
+    document.getElementById('fetchModelsBtn').disabled = false;
+    fetchAndPopulateModels(false);
+});
 document.getElementById('fetchModelsBtn').addEventListener('click', () => fetchAndPopulateModels(true));
 
-// 處理語言切換：同時更新畫面文字以及預設 prompt
 function onUILanguageChange(e) {
     const newLang = e.target.value;
     applyI18n(newLang);
     updateDefaultPrompts(newLang);
+
+    // Update dynamic button texts
+    const apiKeyInput = document.getElementById('apiKey');
+    const toggleBtn = document.getElementById('toggleApiKeyBtn');
+    toggleBtn.textContent = window.i18n.getMessage(apiKeyInput.type === 'password' ? 'opt_show' : 'opt_hide', newLang);
 }
 
-// 若優化/標題 prompt 為空（或仍為舊預設值），就填上目前語系的預設值
 function updateDefaultPrompts(lang) {
     const defaults = window.i18n.getDefaultPrompts(lang);
     const optimizeEl = document.getElementById('optimizePrompt');
     const titleEl = document.getElementById('titlePrompt');
 
-    // 只有當欄位是空的，或者看起來是上一個語系的預設值（透過簡單比對），才覆蓋
-    // 這裡簡單作法：若目前值為空，或與任何語系的預設值相同，則視為尚無自訂
     const langKeys = ['en', 'zh_TW', 'zh_CN'];
     let optimizeIsDefault = !optimizeEl.value.trim();
     let titleIsDefault = !titleEl.value.trim();
@@ -127,7 +144,6 @@ function restoreOptions() {
         document.getElementById('uiLang').value = lang;
         applyI18n(lang);
 
-        // API key 與模型
         if (items.apiKey) {
             document.getElementById('apiKey').value = items.apiKey;
             document.getElementById('model').disabled = false;
@@ -145,16 +161,15 @@ function restoreOptions() {
             }
         }
 
-        // 翻譯語言
         document.getElementById('translateLang').value = items.translateLang || 'English';
-        // 信件檢查 prompt（不用預設值）
         document.getElementById('checkPrompt').value = items.checkPrompt || '';
-        // 寄信防呆
         document.getElementById('enableDoubleConfirm').checked = items.enableDoubleConfirm !== false;
 
-        // ★ 重點：優化內文與優化標題 prompt 補上預設值
         const defaults = window.i18n.getDefaultPrompts(lang);
         document.getElementById('optimizePrompt').value = items.optimizePrompt || defaults.optimize;
         document.getElementById('titlePrompt').value = items.titlePrompt || defaults.title;
+
+        // Init toggle button text
+        document.getElementById('toggleApiKeyBtn').textContent = window.i18n.getMessage('opt_show', lang);
     });
 }
