@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "MailRefine",
+  "version": "1.0.0",
+  "description": "AI-Powered Gmail Writing Assistant, Powered by Gemini",
+  "icons": {
+    "16": "images/logo/MailRefine.png",
+    "48": "images/logo/MailRefine.png",
+    "128": "images/logo/MailRefine.png"
+  },
+  "action": {
+    "default_icon": "images/logo/MailRefine.png"
+  },
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://mail.google.com/*",
+    "https://generativelanguage.googleapis.com/*"
+  ],
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://mail.google.com/*"],
+      "js": [
+        "content_scripts/gmail-observer.js",
+        "content_scripts/compose-injector.js",
+        "content_scripts/send-guard.js"
+      ],
+      "run_at": "document_end"
+    }
+  ],
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "mailrefine@yourdomain.com",
+      "strict_min_version": "109.0"
+    }
+  }
+}
