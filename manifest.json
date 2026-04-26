@@ -9,7 +9,8 @@
     "128": "images/logo/MailRefine.png"
   },
   "action": {
-    "default_icon": "images/logo/MailRefine.png"
+    "default_icon": "images/logo/MailRefine.png",
+    "default_popup": "popup/popup.html"
   },
   "permissions": [
     "storage"
