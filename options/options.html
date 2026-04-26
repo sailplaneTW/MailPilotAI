@@ -44,63 +44,85 @@
     button:hover {
       background: #0842a0;
     }
-    
+
     button:disabled {
       background: #ccc;
       cursor: not-allowed;
+    }
+
+    small {
+      font-weight: normal;
+      color: #555;
     }
   </style>
 </head>
 
 <body>
-  <h1>MailRefine Settings</h1>
+  <h1 data-i18n="opt_title">MailRefine Settings</h1>
 
   <div class="form-group">
-    <label for="apiKey">Gemini API Key</label>
+    <label for="uiLang" data-i18n="opt_ui_lang">UI Language</label>
+    <select id="uiLang">
+      <option value="en">English</option>
+      <option value="zh_TW">正體中文 (Traditional Chinese)</option>
+      <option value="zh_CN">简体中文 (Simplified Chinese)</option>
+    </select>
+  </div>
+
+  <div class="form-group">
+    <label for="apiKey" data-i18n="opt_api_key">Gemini API Key</label>
     <input type="text" id="apiKey" placeholder="AIzaSy...">
   </div>
 
   <div class="form-group">
-    <label for="model">Model</label>
+    <label for="model" data-i18n="opt_model">Model</label>
     <div style="display: flex; gap: 10px;">
       <select id="model" style="flex-grow: 1;" disabled>
         <option value="gemini-2.0-flash">gemini-2.0-flash</option>
         <option value="gemini-1.5-pro">gemini-1.5-pro</option>
       </select>
-      <button id="fetchModelsBtn" type="button" style="white-space: nowrap;" disabled>Update Models</button>
+      <button id="fetchModelsBtn" type="button" style="white-space: nowrap;" disabled data-i18n="opt_update_models">Update Models</button>
     </div>
   </div>
 
   <div class="form-group">
-    <label for="optimizePrompt">優化內文 Prompt</label>
-    <textarea id="optimizePrompt" rows="3">請以商業 email 的慣例邏輯，替我改寫內文。不用過度客氣但請要有禮貌，也刪除不必要的冗字</textarea>
+    <label for="optimizePrompt" data-i18n="opt_prompt_optimize">Optimize Body Prompt</label>
+    <textarea id="optimizePrompt" rows="3"></textarea>
   </div>
 
   <div class="form-group">
-    <label for="translateLang">翻譯目標語言</label>
-    <input type="text" id="translateLang" placeholder="例如：英文、日文">
+    <label for="translateLang" data-i18n="opt_translate_lang">Target Translation Language</label>
+    <select id="translateLang">
+      <option value="English">English</option>
+      <option value="Traditional Chinese">Traditional Chinese</option>
+      <option value="Simplified Chinese">Simplified Chinese</option>
+      <option value="Japanese">Japanese</option>
+    </select>
   </div>
 
   <div class="form-group">
-    <label for="titlePrompt">優化標題 Prompt</label>
-    <textarea id="titlePrompt" rows="2">請根據內文的內容及語系替我產生信件標題</textarea>
+    <label for="titlePrompt" data-i18n="opt_prompt_title">Optimize Subject Prompt</label>
+    <textarea id="titlePrompt" rows="3"></textarea>
   </div>
 
   <div class="form-group">
-    <label for="checkPrompt">信件檢查 Prompt (選填)</label>
-    <textarea id="checkPrompt" rows="2" placeholder="請檢查有沒有錯字或是語氣不順的地方"></textarea>
+    <label for="checkPrompt">
+      <span data-i18n="opt_prompt_check">Check Email Prompt (Disabled when empty)</span>
+    </label>
+    <textarea id="checkPrompt" rows="3"></textarea>
   </div>
 
   <div class="form-group">
     <label>
       <input type="checkbox" id="enableDoubleConfirm" checked>
-      Enable Double-Click Send Confirmation (寄信防呆)
+      <span data-i18n="opt_double_confirm">Enable Double-Click Send Confirmation</span>
     </label>
   </div>
 
-  <button id="saveBtn">Save Settings</button>
+  <button id="saveBtn" data-i18n="opt_save">Save Settings</button>
   <span id="status" style="margin-left: 10px; color: green;"></span>
 
+  <script src="../utils/i18n.js"></script>
   <script src="options.js"></script>
 </body>
 

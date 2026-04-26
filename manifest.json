@@ -25,8 +25,11 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://mail.google.com/*"],
+      "matches": [
+        "https://mail.google.com/*"
+      ],
       "js": [
+        "utils/i18n.js",
         "content_scripts/gmail-observer.js",
         "content_scripts/compose-injector.js",
         "content_scripts/send-guard.js"

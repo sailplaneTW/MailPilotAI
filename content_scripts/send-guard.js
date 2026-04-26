@@ -1,59 +1,95 @@
-// content_scripts/send-guard.js
+(() => {
+  if (window.__mailrefineSendGuardInstalled) return;
+  window.__mailrefineSendGuardInstalled = true;
 
-function initSendGuard(composeWindow) {
+  const SEND_BUTTON_SELECTORS = [
+    'div[role="button"][data-tooltip*="Send"]',
+    'div[role="button"][data-tooltip*="傳送"]',
+    'div[role="button"][aria-label*="Send"]',
+    'div[role="button"][aria-label*="傳送"]',
+    'button[aria-label*="Send"]',
+    'button[aria-label*="傳送"]'
+  ].join(',');
+
+  const I18N = window.i18n || {
+    getMessage: (key) => {
+      if (key === 'guard_warning') return '⚠️ Confirm Send?';
+      return key;
+    }
+  };
+
+  let enabled = true;
+  const buttonState = new WeakMap();
+
   chrome.storage.local.get(['enableDoubleConfirm'], (data) => {
-    if (data.enableDoubleConfirm === false) return; // Opt-out feature
+    enabled = data.enableDoubleConfirm !== false;
+  });
 
-    let isConfirmed = false;
-
-    const bindSendButton = () => {
-      // Known Gmail send button selectors
-      const sendButton = composeWindow.querySelector('.gU.Up .dC > div') || 
-                         composeWindow.querySelector('div[data-tooltip*="Send"]') || 
-                         composeWindow.querySelector('div[data-tooltip*="傳送"]');
-                         
-      if (sendButton && !sendButton.dataset.mailrefineBound) {
-        sendButton.dataset.mailrefineBound = 'true';
-        
-        // Intercept click using capture phase
-        sendButton.addEventListener('click', (e) => {
-          if (!isConfirmed) {
-            e.preventDefault();
-            e.stopPropagation();
-            e.stopImmediatePropagation(); // Block original Gmail send event
-
-            // Change button state to warning
-            const originalText = sendButton.innerText;
-            sendButton.innerText = '⚠️ 確認寄出？';
-            sendButton.style.backgroundColor = '#d93025'; // Warning red
-
-            isConfirmed = true;
-
-            // Reset after 5 seconds if not clicked
-            setTimeout(() => {
-              if (sendButton) {
-                isConfirmed = false;
-                sendButton.innerText = originalText;
-                sendButton.style.backgroundColor = ''; // Reset to default
-              }
-            }, 5000);
-          }
-          // If isConfirmed is true, the click passes through and sends the email
-        }, true);
-        return true;
-      }
-      return false;
-    };
-
-    // Gmail heavily uses dynamic rendering. The send button may not exist yet.
-    if (!bindSendButton()) {
-      let attempts = 0;
-      const poll = setInterval(() => {
-        if (bindSendButton() || attempts > 20) {
-          clearInterval(poll);
-        }
-        attempts++;
-      }, 500);
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local') return;
+    if (changes.enableDoubleConfirm) {
+      enabled = changes.enableDoubleConfirm.newValue !== false;
     }
   });
-}
+
+  function isVisible(el) {
+    if (!el || !(el instanceof Element)) return false;
+    const style = getComputedStyle(el);
+    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  }
+
+  function restoreButton(btn) {
+    const state = buttonState.get(btn);
+    if (!state) return;
+
+    clearTimeout(state.timer);
+    btn.textContent = state.originalText;
+    btn.style.backgroundColor = state.originalBg;
+    btn.style.color = state.originalColor;
+    buttonState.delete(btn);
+  }
+
+  document.addEventListener('click', (e) => {
+    if (!enabled) return;
+    const target = e.target;
+    if (!(target instanceof Element)) return;
+
+    const sendButton = target.closest(SEND_BUTTON_SELECTORS);
+    if (!sendButton || !isVisible(sendButton)) return;
+
+    const state = buttonState.get(sendButton);
+
+    // 第二次點擊：放行
+    if (state && state.confirmed) {
+      restoreButton(sendButton);
+      return;
+    }
+
+    // 第一次點擊：攔截
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+
+    const originalText = sendButton.textContent;
+    const originalBg = sendButton.style.backgroundColor;
+    const originalColor = sendButton.style.color;
+
+    sendButton.textContent = I18N.getMessage('guard_warning');
+    sendButton.style.backgroundColor = '#d93025';
+    sendButton.style.color = '#fff';
+
+    const timer = setTimeout(() => {
+      restoreButton(sendButton);
+    }, 5000);
+
+    buttonState.set(sendButton, {
+      confirmed: true,
+      originalText,
+      originalBg,
+      originalColor,
+      timer
+    });
+  }, true);
+})();

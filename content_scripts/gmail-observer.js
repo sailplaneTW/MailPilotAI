@@ -1,26 +1,51 @@
-// content_scripts/gmail-observer.js
+(() => {
+  if (window.__mailrefineObserverInstalled) return;
+  window.__mailrefineObserverInstalled = true;
 
-// Known Gmail compose window selectors
-const COMPOSE_WINDOW_SELECTOR = '.M9';
-const TOOLBAR_SELECTOR = '.btC';
-
-const observer = new MutationObserver((mutations) => {
-  for (const mutation of mutations) {
-    for (const node of mutation.addedNodes) {
-      if (node.nodeType === Node.ELEMENT_NODE) {
-        // Check if a compose window was added or opened
-        const composeWindows = document.querySelectorAll(COMPOSE_WINDOW_SELECTOR);
-        composeWindows.forEach(window => {
-          if (!window.dataset.mailrefineInjected) {
-            window.dataset.mailrefineInjected = 'true';
-            initMailRefineUI(window);
-            initSendGuard(window);
-          }
-        });
-      }
+  const queueScan = () => {
+    try {
+      window.MailRefine?.scanComposeState?.();
+    } catch (err) {
+      console.error('[MailRefine][observer]', err);
     }
-  }
-});
+  };
 
-// Start observing the body for injected compose dialogs
-observer.observe(document.body, { childList: true, subtree: true });
+  const scheduleScan = (() => {
+    let rafId = null;
+    return () => {
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        queueScan();
+      });
+    };
+  })();
+
+  const startObserver = () => {
+    if (!document.body) return false;
+
+    const observer = new MutationObserver(() => {
+      scheduleScan();
+    });
+
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+    });
+
+    document.addEventListener('focusin', scheduleScan, true);
+    document.addEventListener('click', scheduleScan, true);
+    document.addEventListener('keydown', scheduleScan, true);
+    setInterval(scheduleScan, 1200);
+
+    queueScan();
+    return true;
+  };
+
+  if (!startObserver()) {
+    const bootTimer = setInterval(() => {
+      if (startObserver()) clearInterval(bootTimer);
+    }, 300);
+  }
+})();
