@@ -91,6 +91,8 @@ function initMailRefineUI(composeWindow) {
   const btnTitle = makeBtn('📝 優化標題', '#f29900');
   const btnCheck = makeBtn('🔍 檢查信件', '#d93025');
 
+  const allBtns = [btnOptimize, btnTranslate, btnTitle, btnCheck];
+
   funcArea.append(btnOptimize, btnTranslate, btnTitle, btnCheck);
 
   // ── 訊息區（中）───────────────────────────────────────
@@ -119,7 +121,7 @@ function initMailRefineUI(composeWindow) {
   // ── 訊息輔助 ───────────────────────────────────────────
   function showMsg(html) {
     msgArea.innerHTML = html;
-    msgArea.style.maxHeight = '160px';
+    msgArea.style.maxHeight = '500px';
     msgArea.style.padding = '10px 14px';
   }
   function clearMsg() {
@@ -149,7 +151,7 @@ function initMailRefineUI(composeWindow) {
   function msgInfo(html) {
     showMsg(`<div style="padding:8px 10px;background:#e8f0fe;border:1px solid #c5d3f0;
       border-radius:6px;color:#1a55bd;font-size:12px;line-height:1.6;
-      max-height:140px;overflow-y:auto;">${html}</div>`);
+      max-height:400px;overflow-y:auto;">${html}</div>`);
   }
 
   // ── 按鈕停用輔助 ───────────────────────────────────────
@@ -165,6 +167,17 @@ function initMailRefineUI(composeWindow) {
     btn.style.cursor = disabled ? 'not-allowed' : 'pointer';
   }
 
+  function setUIProcessing(isProcessing, activeBtn) {
+    allBtns.forEach(btn => {
+      if (btn === activeBtn) {
+        setLoading(btn, isProcessing);
+      } else {
+        disableBtn(btn, isProcessing);
+      }
+    });
+    if (!isProcessing) refreshCheckBtn();
+  }
+
   // ── 讀取設定並初始化按鈕狀態 ──────────────────────────
   async function refreshCheckBtn() {
     const { checkPrompt } = await chrome.storage.local.get(['checkPrompt']);
@@ -174,8 +187,9 @@ function initMailRefineUI(composeWindow) {
 
   // ── Gemini API 呼叫 ────────────────────────────────────
   async function callGemini(prompt, content) {
+    const finalPrompt = prompt + '\n\n(重要指令：請務必將回傳結果限制在 1500 字以內)';
     return new Promise((resolve) => {
-      chrome.runtime.sendMessage({ action: 'CALL_GEMINI_API', prompt, content }, resolve);
+      chrome.runtime.sendMessage({ action: 'CALL_GEMINI_API', prompt: finalPrompt, content }, resolve);
     });
   }
 
@@ -226,7 +240,7 @@ function initMailRefineUI(composeWindow) {
     clearMsg(); clearContent();
     const orig = btnOptimize.textContent;
     btnOptimize.textContent = '⏳ 處理中...';
-    setLoading(btnOptimize, true);
+    setUIProcessing(true, btnOptimize);
 
     try {
       const { optimizePrompt } = await chrome.storage.local.get(['optimizePrompt']);
@@ -244,7 +258,7 @@ function initMailRefineUI(composeWindow) {
       msgError('發生錯誤：' + err.message);
     } finally {
       btnOptimize.textContent = orig;
-      setLoading(btnOptimize, false);
+      setUIProcessing(false, btnOptimize);
     }
   });
 
@@ -260,7 +274,7 @@ function initMailRefineUI(composeWindow) {
     clearMsg(); clearContent();
     const orig = btnTranslate.textContent;
     btnTranslate.textContent = '⏳ 翻譯中...';
-    setLoading(btnTranslate, true);
+    setUIProcessing(true, btnTranslate);
 
     try {
       const { translateLang } = await chrome.storage.local.get(['translateLang']);
@@ -279,7 +293,7 @@ function initMailRefineUI(composeWindow) {
       msgError('發生錯誤：' + err.message);
     } finally {
       btnTranslate.textContent = orig;
-      setLoading(btnTranslate, false);
+      setUIProcessing(false, btnTranslate);
     }
   });
 
@@ -297,7 +311,7 @@ function initMailRefineUI(composeWindow) {
     clearMsg();
     const orig = btnTitle.textContent;
     btnTitle.textContent = '⏳ 產生中...';
-    setLoading(btnTitle, true);
+    setUIProcessing(true, btnTitle);
 
     try {
       const { titlePrompt } = await chrome.storage.local.get(['titlePrompt']);
@@ -318,7 +332,7 @@ function initMailRefineUI(composeWindow) {
       msgError('發生錯誤：' + err.message);
     } finally {
       btnTitle.textContent = orig;
-      setLoading(btnTitle, false);
+      setUIProcessing(false, btnTitle);
     }
   });
 
@@ -333,7 +347,7 @@ function initMailRefineUI(composeWindow) {
     clearMsg();
     const orig = btnCheck.textContent;
     btnCheck.textContent = '⏳ 檢查中...';
-    setLoading(btnCheck, true);
+    setUIProcessing(true, btnCheck);
 
     try {
       const { checkPrompt } = await chrome.storage.local.get(['checkPrompt']);
@@ -355,8 +369,7 @@ function initMailRefineUI(composeWindow) {
       msgError('發生錯誤：' + err.message);
     } finally {
       btnCheck.textContent = orig;
-      // 重新確認是否仍有 checkPrompt（使用者可能在設定頁改過）
-      refreshCheckBtn();
+      setUIProcessing(false, btnCheck);
     }
   });
 
