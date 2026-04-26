@@ -103,13 +103,16 @@ document.getElementById('fetchModelsBtn').addEventListener('click', () => fetchA
 
 function onUILanguageChange(e) {
     const newLang = e.target.value;
-    applyI18n(newLang);
-    updateDefaultPrompts(newLang);
+    // 立即儲存語系設定，觸發 onChanged 事件給其他分頁 (如 Gmail 內視窗)
+    chrome.storage.local.set({ uiLang: newLang }, () => {
+        applyI18n(newLang);
+        updateDefaultPrompts(newLang);
 
-    // 同步更新密碼顯示/隱藏按鈕的文字
-    const apiKeyInput = document.getElementById('apiKey');
-    const toggleBtn = document.getElementById('toggleApiKeyBtn');
-    toggleBtn.textContent = window.i18n.getMessage(apiKeyInput.type === 'password' ? 'opt_show' : 'opt_hide', newLang);
+        // 同步更新密碼顯示/隱藏按鈕的文字
+        const apiKeyInput = document.getElementById('apiKey');
+        const toggleBtn = document.getElementById('toggleApiKeyBtn');
+        toggleBtn.textContent = window.i18n.getMessage(apiKeyInput.type === 'password' ? 'opt_show' : 'opt_hide', newLang);
+    });
 }
 
 // 輔助函式：判斷當前文字是否為任一語系的預設提示詞

@@ -115,15 +115,23 @@
     backupArea.style.padding = '0 14px';
   }
 
-  function dispatchRestoreSnapshot(snapshot, showMsg, t, backupArea) {
+  function showMsg(msgArea, text, type = 'info') {
+    msgArea.textContent = text;
+    msgArea.style.maxHeight = '100px';
+    msgArea.style.padding = '8px 14px';
+    msgArea.style.color = type === 'error' ? '#d93025' : (type === 'success' ? '#188038' : '#5f6368');
+    msgArea.style.backgroundColor = type === 'error' ? '#fce8e6' : (type === 'success' ? '#e6f4ea' : '#f1f3f4');
+  }
+
+  function dispatchRestoreSnapshot(snapshot, msgArea, t, backupArea) {
     const { bodyEl, html } = snapshot || {};
     if (!bodyEl || !bodyEl.isConnected) {
-      showMsg(t('msg_error_restore_lost'), 'error');
+      showMsg(msgArea, t('msg_error_restore_lost'), 'error');
       return;
     }
     bodyEl.innerHTML = html;
     dispatchComposeUpdate(bodyEl);
-    showMsg(t('msg_restore_done'), 'success');
+    showMsg(msgArea, t('msg_restore_done'), 'success');
     clearBackup(backupArea);
   }
 
@@ -157,8 +165,15 @@
           fontFamily: 'Google Sans, system-ui, sans-serif',
           display: 'flex',
           flexDirection: 'column',
-          overflow: 'hidden'
+          overflow: 'hidden',
+          resize: 'both',
+          minWidth: '280px',
+          minHeight: '150px'
         });
+
+        // For resize:both to work, we need a specific overflow
+        popup.style.setProperty('overflow', 'auto', 'important');
+        popup.style.setProperty('resize', 'both', 'important');
 
         // Header
         const header = document.createElement('div');
@@ -219,12 +234,16 @@
         chrome.storage.onChanged.addListener((changes) => {
           if (changes.uiLang) {
             const newLang = changes.uiLang.newValue || 'en';
+            lang = newLang; // 重要：更新閉包內的語系變數，確保後續 AI 請求使用正確語系 
+            
             const newT = (key) => I18N.getMessage(key, newLang);
             titleSpan.textContent = newT('ui_header');
             btnOptimize.textContent = newT('btn_optimize');
             btnTranslate.textContent = newT('btn_translate');
             btnTitle.textContent = newT('btn_title');
             btnCheck.textContent = newT('btn_check');
+            
+            if (minimizeBtn) minimizeBtn.title = newT('minimize_tooltip') || 'Minimize';
           }
         });
 
@@ -235,12 +254,76 @@
         popup.append(header, btnGrid, msgArea, backupArea);
         document.body.appendChild(popup);
 
+        // --- Drag Functionality ---
+        let isDragging = false;
+        let startX, startY, startL, startT;
+
+        header.addEventListener('pointerdown', (e) => {
+          if (e.target.closest('button')) return;
+          isDragging = true;
+          startX = e.clientX;
+          startY = e.clientY;
+          const rect = popup.getBoundingClientRect();
+          startL = rect.left;
+          startT = rect.top;
+          header.setPointerCapture(e.pointerId);
+          popup.style.transition = 'none';
+        });
+
+        header.addEventListener('pointermove', (e) => {
+          if (!isDragging) return;
+          const dx = e.clientX - startX;
+          const dy = e.clientY - startY;
+          popup.style.left = `${startL + dx}px`;
+          popup.style.top = `${startT + dy}px`;
+          popup.style.bottom = 'auto';
+          popup.style.right = 'auto';
+        });
+
+        header.addEventListener('pointerup', (e) => {
+          if (!isDragging) return;
+          isDragging = false;
+          header.releasePointerCapture(e.pointerId);
+          popup.style.transition = '';
+        });
+
         // Action Handler
         const handleAction = async (type) => {
-          if (!currentCompose) return;
+          if (!currentCompose) {
+            const candidates = document.querySelectorAll(COMPOSE_SELECTORS);
+            if (candidates.length === 1) {
+              currentCompose = candidates[0];
+            } else {
+              showMsg(msgArea, t('msg_error_no_body'), 'error');
+              return;
+            }
+          }
           const body = getComposeBody(currentCompose);
           const text = extractText(body);
-          if (!text) return;
+          if (!text) {
+            showMsg(msgArea, t('msg_error_empty'), 'error');
+            return;
+          }
+
+          // Loading state
+          const origLabels = {
+            optimize: btnOptimize.textContent,
+            translate: btnTranslate.textContent,
+            title: btnTitle.textContent,
+            check: btnCheck.textContent
+          };
+          const statusKeys = {
+            optimize: 'status_processing',
+            translate: 'status_translating',
+            title: 'status_generating',
+            check: 'status_checking'
+          };
+
+          const btns = [btnOptimize, btnTranslate, btnTitle, btnCheck];
+          btns.forEach(b => b.disabled = true);
+          const activeBtn = { optimize: btnOptimize, translate: btnTranslate, title: btnTitle, check: btnCheck }[type];
+          activeBtn.textContent = t(statusKeys[type]);
+          clearMsg(msgArea);
 
           const backupSnapshot = { bodyEl: body, html: body.innerHTML, text };
           const settings = await chrome.storage.local.get(['optimizePrompt', 'titlePrompt', 'checkPrompt', 'translateLang']);
@@ -248,18 +331,53 @@
           let prompt = '';
           if (type === 'optimize') prompt = settings.optimizePrompt || I18N.getDefaultPrompts(lang).optimize;
           else if (type === 'title') prompt = settings.titlePrompt || I18N.getDefaultPrompts(lang).title;
-          else if (type === 'translate') prompt = `Translate to ${settings.translateLang || 'English'}`;
+          else if (type === 'translate') prompt = `Translate to ${settings.translateLang || 'English'}: \n\n${text}`;
+          else if (type === 'check') {
+            if (!settings.checkPrompt) {
+              showMsg(msgArea, t('msg_error_no_check_prompt'), 'error');
+              btns.forEach(b => b.disabled = false);
+              activeBtn.textContent = origLabels[type];
+              return;
+            }
+            prompt = settings.checkPrompt;
+          }
 
           chrome.runtime.sendMessage({ action: 'CALL_GEMINI_API', prompt, content: text }, response => {
+            btns.forEach(b => b.disabled = false);
+            activeBtn.textContent = origLabels[type];
+
             if (response.success) {
               const output = removeCommonModelDecorations(response.data);
               if (type === 'title') {
                 const subjectInput = currentCompose.querySelector(SUBJECT_SELECTORS);
-                if (subjectInput) setInputValue(subjectInput, normalizeTitle(output));
+                if (subjectInput) {
+                  setInputValue(subjectInput, normalizeTitle(output));
+                  showMsg(msgArea, t('msg_success_title') + normalizeTitle(output), 'success');
+                }
+              } else if (type === 'check') {
+                showMsg(msgArea, output, 'info');
+                msgArea.style.whiteSpace = 'pre-wrap';
               } else {
                 replaceTextSafely(body, output);
                 activeBackupSnapshot = backupSnapshot;
+                showMsg(msgArea, type === 'translate' ? t('msg_success_trans') + (settings.translateLang || 'English') : t('msg_success_opt'), 'success');
+                
+                // Show Restore button
+                backupArea.innerHTML = '';
+                const restoreBtn = document.createElement('button');
+                restoreBtn.textContent = t('backup_restore');
+                Object.assign(restoreBtn.style, {
+                  marginTop: '8px', padding: '4px 8px', fontSize: '11px',
+                  backgroundColor: '#f1f3f4', border: '1px solid #dadce0',
+                  borderRadius: '4px', cursor: 'pointer'
+                });
+                restoreBtn.onclick = () => dispatchRestoreSnapshot(activeBackupSnapshot, msgArea, t, backupArea);
+                backupArea.append(restoreBtn);
+                backupArea.style.maxHeight = '100px';
+                backupArea.style.padding = '0 14px 8px 14px';
               }
+            } else {
+              showMsg(msgArea, t('msg_error_api') + (response.error || 'Unknown error'), 'error');
             }
           });
         };
@@ -287,12 +405,20 @@
   function scanComposeWindows() {
     const candidates = document.querySelectorAll(COMPOSE_SELECTORS);
     candidates.forEach(win => {
-      if (win.hasAttribute(DATA_INJECTED)) return;
+      if (!win.hasAttribute(DATA_INJECTED)) {
+        win.setAttribute(DATA_INJECTED, '1');
+        // 當使用者點擊或聚焦在寫信視窗時，更新目前的 currentCompose
+        win.addEventListener('focusin', () => {
+          currentCompose = win;
+        });
+        win.addEventListener('click', () => {
+          currentCompose = win;
+        });
+      }
+      
       const body = win.querySelector(BODY_SELECTOR);
       if (!body) return;
 
-      win.setAttribute(DATA_INJECTED, '1');
-      currentCompose = win;
       createPopup().then(() => {
         if (popup) popup.style.display = 'flex';
       });
