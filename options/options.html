@@ -20,6 +20,7 @@
     .shell {
       max-width: 760px;
       margin: 0 auto;
+      padding-bottom: 100px; /* 為固定在下方的儲存按鈕預留空間 */
     }
 
     .header {
@@ -154,18 +155,33 @@
       flex: 0 0 auto;
     }
 
-    .footer {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-top: 18px;
-      flex-wrap: wrap;
+    .footer-fixed {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(10px);
+      border-top: 1px solid #e0e3e7;
+      padding: 16px 0;
+      z-index: 1000;
+      box-shadow: 0 -4px 12px rgba(0,0,0,0.03);
     }
 
-    #status {
+    .footer-content {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .footer-status {
       min-height: 1em;
       font-size: 13px;
       font-weight: 600;
+      color: #188038;
     }
 
     @media (max-width: 640px) {
@@ -272,9 +288,12 @@
       </div>
     </div>
 
-    <div class="footer">
+  </div>
+
+  <div class="footer-fixed">
+    <div class="footer-content">
       <button id="saveBtn" data-i18n="opt_save">Save Settings</button>
-      <span id="status" aria-live="polite"></span>
+      <span id="status" class="footer-status" aria-live="polite"></span>
     </div>
   </div>
 

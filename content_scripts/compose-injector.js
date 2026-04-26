@@ -404,6 +404,21 @@
 
   function scanComposeWindows() {
     const candidates = document.querySelectorAll(COMPOSE_SELECTORS);
+    
+    // 如果畫面上沒有任何寫信視窗，則隱藏浮動面板 
+    if (candidates.length === 0) {
+      if (popup && popup.style.display !== 'none') {
+        popup.style.display = 'none';
+      }
+      currentCompose = null;
+      return;
+    }
+
+    // 如果目前的 currentCompose 已經不在 DOM 中，則清空它 
+    if (currentCompose && !currentCompose.isConnected) {
+      currentCompose = null;
+    }
+
     candidates.forEach(win => {
       if (!win.hasAttribute(DATA_INJECTED)) {
         win.setAttribute(DATA_INJECTED, '1');
