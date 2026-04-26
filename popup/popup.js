@@ -1,38 +1,47 @@
-// popup/popup.js
-document.addEventListener('DOMContentLoaded', () => {
-  chrome.storage.local.get(['apiKey', 'model', 'uiLang'], (data) => {
-    const lang = data.uiLang || 'en';
-    const keyStatus = document.getElementById('keyStatus');
-    const modelStatus = document.getElementById('modelStatus');
+/**
+ * popup/popup.js
+ * Logic for the MailPilot Browser Action popup.
+ */
+(() => {
+  const { storageGet } = window.MailPilotUtils;
+  const I18N = window.i18n;
 
-    // Apply basic i18n
+  /**
+   * Update UI with status info from storage
+   */
+  async function updateStatus() {
+    const items = await storageGet(['uiLang', 'apiKey', 'model']);
+    const lang = items.uiLang || 'en';
+
+    // Translate static elements
     document.querySelectorAll('[data-i18n]').forEach(el => {
       const key = el.getAttribute('data-i18n');
-      el.textContent = window.i18n.getMessage(key, lang);
+      el.textContent = I18N.getMessage(key, lang);
     });
 
-    if (data.apiKey) {
-      keyStatus.textContent = window.i18n.getMessage('popup_status_set', lang);
-      keyStatus.className = 'status-val';
-    } else {
-      keyStatus.textContent = window.i18n.getMessage('popup_status_missing', lang);
-      keyStatus.className = 'status-missing';
-    }
+    // Dynamic status indicators
+    const keyVal = document.getElementById('keyStatus');
+    const modelVal = document.getElementById('modelStatus');
+    const tip = document.getElementById('setupTip');
 
-    if (data.model) {
-      modelStatus.textContent = data.model;
-      modelStatus.className = 'status-val';
+    if (items.apiKey) {
+      keyVal.textContent = I18N.getMessage('popup_status_set', lang);
+      keyVal.className = 'status-val status-ok';
+      modelVal.textContent = items.model || 'gemini-1.5-flash';
+      tip.style.display = 'none';
     } else {
-      modelStatus.textContent = window.i18n.getMessage('popup_status_missing', lang);
-      modelStatus.className = 'status-missing';
+      keyVal.textContent = I18N.getMessage('popup_status_missing', lang);
+      keyVal.className = 'status-val status-missing';
+      modelVal.textContent = '-';
+      tip.style.display = 'block';
     }
+  }
+
+  // Open settings page
+  document.getElementById('openSettings').addEventListener('click', () => {
+    chrome.runtime.openOptionsPage();
   });
 
-  document.getElementById('settingsBtn').addEventListener('click', () => {
-    if (chrome.runtime.openOptionsPage) {
-      chrome.runtime.openOptionsPage();
-    } else {
-      window.open(chrome.runtime.getURL('options/options.html'));
-    }
-  });
-});
+  // Initialize
+  document.addEventListener('DOMContentLoaded', updateStatus);
+})();

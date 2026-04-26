@@ -1,100 +1,82 @@
-// content_scripts/send-guard.js
+/**
+ * content_scripts/send-guard.js
+ * Implements a double-confirm mechanism for the Gmail Send button.
+ */
 (() => {
   if (window.__mailpilotSendGuardInstalled) return;
   window.__mailpilotSendGuardInstalled = true;
 
-  const SEND_BUTTON_SELECTOR = 'div[role="button"][data-tooltip*="Send"], div[role="button"][data-tooltip*="傳送"], div[role="button"][aria-label*="Send"], div[role="button"][aria-label*="傳送"], button[aria-label*="Send"], button[aria-label*="傳送"]';
-  const I18N = window.i18n || { getMessage: (k) => k };
+  const { storageGet, getUILanguage } = window.MailPilotUtils;
+  const I18N = window.i18n;
 
-  let enabled = true;
   let uiLang = 'en';
+  let isArmed = false;
+  let resetTimer = null;
 
-  chrome.storage.local.get(['enableDoubleConfirm', 'uiLang'], data => {
-    enabled = data.enableDoubleConfirm !== false;
-    if (data.uiLang) uiLang = data.uiLang;
+  // Initial language load
+  getUILanguage().then(lang => { uiLang = lang; });
+
+  // Sync language changes
+  chrome.storage.onChanged.addListener((changes) => {
+    if (changes.uiLang) uiLang = changes.uiLang.newValue || 'en';
   });
 
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local') {
-      if (changes.enableDoubleConfirm) enabled = changes.enableDoubleConfirm.newValue !== false;
-      if (changes.uiLang) uiLang = changes.uiLang.newValue;
-    }
-  });
-
-  const buttonStates = new WeakMap();
-  let armedButton = null;
-
-  function restoreButton(btn) {
-    const state = buttonStates.get(btn);
-    if (!state) return;
-
-    clearTimeout(state.timer);
-    btn.textContent = state.originalText;
-    btn.style.backgroundColor = state.originalBg;
-    btn.style.color = state.originalColor;
-    btn.style.outline = state.originalOutline;
-    btn.style.boxShadow = state.originalBoxShadow;
-    btn.title = state.originalTitle;
-    buttonStates.delete(btn);
-
-    if (armedButton === btn) {
-      armedButton = null;
-    }
+  /**
+   * Reset the button to its original state
+   */
+  function disarmButton(btn, originalLabel, originalColor) {
+    isArmed = false;
+    btn.textContent = originalLabel;
+    btn.style.backgroundColor = originalColor;
+    if (resetTimer) clearTimeout(resetTimer);
   }
 
-  function armButton(btn) {
-    const originalText = btn.textContent || '';
-    const originalBg = btn.style.backgroundColor;
-    const originalColor = btn.style.color;
-    const originalOutline = btn.style.outline;
-    const originalBoxShadow = btn.style.boxShadow;
-    const originalTitle = btn.title;
+  /**
+   * Handle the Send button click event
+   */
+  async function handleSendClick(e) {
+    const { enableDoubleConfirm } = await storageGet(['enableDoubleConfirm']);
+    if (enableDoubleConfirm === false) return;
 
-    btn.textContent = I18N.getMessage('guard_warning', uiLang);
-    btn.style.backgroundColor = '#d93025';
-    btn.style.color = '#fff';
-    btn.style.outline = '2px solid rgba(217, 48, 37, 0.18)';
-    btn.style.boxShadow = '0 2px 8px rgba(217, 48, 37, 0.25)';
-    btn.title = I18N.getMessage('guard_warning', uiLang);
-
-    const timer = setTimeout(() => restoreButton(btn), 5000);
-
-    buttonStates.set(btn, {
-      originalText,
-      originalBg,
-      originalColor,
-      originalOutline,
-      originalBoxShadow,
-      originalTitle,
-      timer
-    });
-
-    armedButton = btn;
-  }
-
-  document.addEventListener('click', (e) => {
-    if (!enabled) return;
-
-    const target = e.target;
-    if (!(target instanceof Element)) return;
-
-    const sendBtn = target.closest(SEND_BUTTON_SELECTOR);
-
-    if (armedButton && sendBtn !== armedButton) {
-      restoreButton(armedButton);
-    }
-
-    if (!sendBtn || !sendBtn.isConnected) return;
-
-    if (sendBtn === armedButton) {
-      restoreButton(sendBtn);
+    const btn = e.currentTarget;
+    if (isArmed) {
+      // Second click: let the event proceed
+      isArmed = false;
+      if (resetTimer) clearTimeout(resetTimer);
       return;
     }
 
+    // First click: block and arm
     e.preventDefault();
     e.stopPropagation();
-    e.stopImmediatePropagation();
 
-    armButton(sendBtn);
-  }, true);
+    isArmed = true;
+    const originalLabel = btn.textContent;
+    const originalColor = btn.style.backgroundColor;
+
+    btn.textContent = I18N.getMessage('guard_warning', uiLang);
+    btn.style.backgroundColor = '#d93025'; // Red alert color
+
+    // Auto-disarm after 5 seconds
+    resetTimer = setTimeout(() => {
+      disarmButton(btn, originalLabel, originalColor);
+    }, 5000);
+  }
+
+  /**
+   * Scan for the Send button and attach listener
+   */
+  function scanAndGuard() {
+    // Standard Gmail send button and mobile/mini compose send buttons
+    const sendButtons = document.querySelectorAll('.T-I.J-J5-Ji.aoO.v7.T-I-atl.L3, [aria-label*="Send"], [role="button"][data-tooltip*="Send"]');
+    
+    sendButtons.forEach(btn => {
+      if (btn.hasAttribute('data-mailpilot-guarded')) return;
+      btn.setAttribute('data-mailpilot-guarded', '1');
+      btn.addEventListener('click', handleSendClick, true); // Use capture to intercept before Gmail
+    });
+  }
+
+  // Monitor the DOM for new compose windows
+  setInterval(scanAndGuard, 1000);
 })();

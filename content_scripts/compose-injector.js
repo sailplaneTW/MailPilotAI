@@ -1,445 +1,322 @@
-// content_scripts/compose-injector.js
+/**
+ * content_scripts/compose-injector.js
+ * Injects the MailPilot AI floating panel into Gmail's compose window.
+ */
 (() => {
   if (window.__mailpilotComposeInjectorInstalled) return;
   window.__mailpilotComposeInjectorInstalled = true;
 
-  // 確保能正確取得 i18n 工具 
+  const { storageGet, getUILanguage, createElement } = window.MailPilotUtils;
+
+  // --- Constants ---
+  const SELECTORS = {
+    COMPOSE_WINDOW: '[role="dialog"], .M9',
+    BODY_EDITOR: 'div[contenteditable="true"]',
+    SUBJECT_INPUT: 'input[name="subjectbox"], input[placeholder*="Subject"], input[aria-label*="Subject"], input[placeholder*="主旨"]',
+  };
+
+  const ATTR_INJECTED = 'data-mailpilot-injected';
+
+  // --- UI State ---
+  let popup = null;
+  let currentComposeWindow = null;
+  let activeBackup = null;
+  let uiLang = 'en';
+
+  /**
+   * Initialize i18n helper
+   */
   const getI18n = () => window.i18n || {
     getMessage: (k) => k,
     getDefaultPrompts: () => ({ optimize: '', title: '' })
   };
 
-  const COMPOSE_SELECTORS = '[role="dialog"], .M9';
-  const BODY_SELECTOR = 'div[contenteditable="true"]';
-  const SUBJECT_SELECTORS = 'input[name="subjectbox"], input[placeholder*="Subject"], input[aria-label*="Subject"], input[placeholder*="主旨"]';
-  const DATA_INJECTED = 'data-mailpilot-injected';
+  const I18N = getI18n();
+  const t = (key) => I18N.getMessage(key, uiLang);
 
-  // ── Utilities ───────────────────────────────────────────
-  function getComposeBody(composeEl) {
-    return composeEl.querySelector(BODY_SELECTOR);
+  // --- DOM Utilities ---
+  
+  function getComposeBody(win) {
+    return win.querySelector(SELECTORS.BODY_EDITOR);
   }
 
-  function escapeHtml(str) {
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-  }
-
-  function removeCommonModelDecorations(text) {
-    let out = String(text ?? '').replace(/\r\n/g, '\n').trim();
-    out = out.replace(/^```[a-zA-Z]*\n?/, '').replace(/\n?```$/, '').trim();
-    const quotePairs = [['"', '"'], ['“', '”'], ['‘', '’'], ['「', '」'], ['『', '』'], ['«', '»']];
-    for (const [open, close] of quotePairs) {
-      if (out.startsWith(open) && out.endsWith(close) && out.length >= 2) {
-        out = out.slice(open.length, out.length - close.length).trim();
-        break;
-      }
-    }
-    return out;
-  }
-
-  function modelTextToGmailHtml(newText) {
-    const clean = removeCommonModelDecorations(newText);
-    return clean.split('\n').map(line => {
-      return line.trim() === '' ? '<div><br></div>' : `<div>${escapeHtml(line)}</div>`;
-    }).join('');
-  }
-
-  function dispatchComposeUpdate(bodyEl) {
-    try {
-      bodyEl.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: null }));
-    } catch {
-      bodyEl.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-    bodyEl.dispatchEvent(new Event('change', { bubbles: true }));
-  }
-
-  function extractText(bodyEl) {
+  function extractCleanText(bodyEl) {
     const clone = bodyEl.cloneNode(true);
+    // Remove signatures and quotes from context
     clone.querySelectorAll('.gmail_signature, [data-smartmail="gmail_signature"], .gmail_quote, blockquote')
       .forEach(el => el.remove());
     return (clone.innerText || clone.textContent || '').trim();
   }
 
-  function replaceTextSafely(bodyEl, newText) {
-    const preservedSelectors = '.gmail_signature, [data-smartmail="gmail_signature"], .gmail_quote, blockquote';
-    const preserved = [];
-    bodyEl.querySelectorAll(preservedSelectors).forEach(el => {
-      let isNested = false;
-      let parent = el.parentElement;
-      while (parent && parent !== bodyEl) {
-        if (parent.matches && parent.matches(preservedSelectors)) {
-          isNested = true;
-          break;
-        }
-        parent = parent.parentElement;
-      }
-      if (!isNested) preserved.push(el);
-    });
-    preserved.forEach(el => el.remove());
-    bodyEl.innerHTML = modelTextToGmailHtml(newText);
-    preserved.forEach(el => bodyEl.appendChild(el));
-    dispatchComposeUpdate(bodyEl);
-  }
-
-  function setInputValue(inputEl, value) {
-    inputEl.value = value;
-    inputEl.dispatchEvent(new Event('input', { bubbles: true }));
-    inputEl.dispatchEvent(new Event('change', { bubbles: true }));
-  }
-
-  function getLang() {
-    return new Promise(resolve => {
-      chrome.storage.local.get(['uiLang'], data => resolve(data.uiLang || 'en'));
-    });
-  }
-
-  // ── Floating Panel ──────────────────────────────────────
-  let popup = null;
-  let minimizeBtn = null;
-  let currentCompose = null;
-  let popupPromise = null;
-  let activeBackupSnapshot = null;
-
-  function clearMsg(msgArea) {
-    msgArea.innerHTML = '';
-    msgArea.style.maxHeight = '0';
-    msgArea.style.padding = '0 14px';
-  }
-
-  function clearBackup(backupArea) {
-    backupArea.innerHTML = '';
-    backupArea.style.maxHeight = '0';
-    backupArea.style.padding = '0 14px';
-  }
-
-  function showMsg(msgArea, text, type = 'info') {
-    msgArea.textContent = text;
-    msgArea.style.maxHeight = '100px';
-    msgArea.style.padding = '8px 14px';
-    msgArea.style.color = type === 'error' ? '#d93025' : (type === 'success' ? '#188038' : '#5f6368');
-    msgArea.style.backgroundColor = type === 'error' ? '#fce8e6' : (type === 'success' ? '#e6f4ea' : '#f1f3f4');
-  }
-
-  function dispatchRestoreSnapshot(snapshot, msgArea, t, backupArea) {
-    const { bodyEl, html } = snapshot || {};
-    if (!bodyEl || !bodyEl.isConnected) {
-      showMsg(msgArea, t('msg_error_restore_lost'), 'error');
-      return;
-    }
-    bodyEl.innerHTML = html;
-    dispatchComposeUpdate(bodyEl);
-    showMsg(msgArea, t('msg_restore_done'), 'success');
-    clearBackup(backupArea);
-  }
-
-  function createPopup() {
-    if (popup) return Promise.resolve();
-    if (popupPromise) return popupPromise;
-
-    popupPromise = (async () => {
-      try {
-        const lang = await getLang();
-        const I18N = getI18n(); // 取得最新的 i18n 工具 
-        const t = (key) => I18N.getMessage(key, lang);
-
-        popup = document.createElement('div');
-        popup.id = 'mailpilot-popup';
-
-        const w = 320;
-        const initialLeft = Math.max(20, window.innerWidth - w - 40);
-        const initialTop = 100;
-
-        Object.assign(popup.style, {
-          position: 'fixed',
-          width: `${w}px`,
-          left: `${initialLeft}px`,
-          top: `${initialTop}px`,
-          backgroundColor: '#fff',
-          border: '1px solid #dadce0',
-          borderRadius: '14px',
-          boxShadow: '0 8px 28px rgba(0,0,0,0.16)',
-          zIndex: '999999',
-          fontFamily: 'Google Sans, system-ui, sans-serif',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-          resize: 'both',
-          minWidth: '280px',
-          minHeight: '150px'
-        });
-
-        // For resize:both to work, we need a specific overflow
-        popup.style.setProperty('overflow', 'auto', 'important');
-        popup.style.setProperty('resize', 'both', 'important');
-
-        // Header
-        const header = document.createElement('div');
-        Object.assign(header.style, {
-          padding: '10px 12px',
-          backgroundColor: '#f8f9fa',
-          borderBottom: '1px solid #e8eaed',
-          cursor: 'grab',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          userSelect: 'none'
-        });
-
-        const titleWrap = document.createElement('div');
-        const titleSpan = document.createElement('div');
-        titleSpan.textContent = t('ui_header');
-        Object.assign(titleSpan.style, { fontWeight: '700', color: '#202124' });
-        titleWrap.append(titleSpan);
-
-        const closeBtn = document.createElement('button');
-        closeBtn.innerHTML = '&#8722;';
-        Object.assign(closeBtn.style, { background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px' });
-        header.append(titleWrap, closeBtn);
-
-        // Button Grid
-        const btnGrid = document.createElement('div');
-        Object.assign(btnGrid.style, {
-          padding: '12px',
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: '8px'
-        });
-
-        const makeBtn = (label, bgColor) => {
-          const btn = document.createElement('button');
-          btn.textContent = label;
-          Object.assign(btn.style, {
-            padding: '8px 4px',
-            backgroundColor: bgColor,
-            color: '#fff',
-            border: 'none',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            fontWeight: '600',
-            fontSize: '12px'
-          });
-          return btn;
-        };
-
-        const btnOptimize = makeBtn(t('btn_optimize'), '#1a73e8');
-        const btnTranslate = makeBtn(t('btn_translate'), '#34a853');
-        const btnTitle = makeBtn(t('btn_title'), '#fbbc05');
-        const btnCheck = makeBtn(t('btn_check'), '#ea4335');
-        btnGrid.append(btnOptimize, btnTranslate, btnTitle, btnCheck);
-
-        // Listen for language changes dynamically
-        chrome.storage.onChanged.addListener((changes) => {
-          if (changes.uiLang) {
-            const newLang = changes.uiLang.newValue || 'en';
-            lang = newLang; // 重要：更新閉包內的語系變數，確保後續 AI 請求使用正確語系 
-            
-            const newT = (key) => I18N.getMessage(key, newLang);
-            titleSpan.textContent = newT('ui_header');
-            btnOptimize.textContent = newT('btn_optimize');
-            btnTranslate.textContent = newT('btn_translate');
-            btnTitle.textContent = newT('btn_title');
-            btnCheck.textContent = newT('btn_check');
-            
-            if (minimizeBtn) minimizeBtn.title = newT('minimize_tooltip') || 'Minimize';
-          }
-        });
-
-        const msgArea = document.createElement('div');
-        const backupArea = document.createElement('div');
-        Object.assign(msgArea.style, { overflow: 'hidden', transition: 'max-height 0.2s', fontSize: '12px' });
-
-        popup.append(header, btnGrid, msgArea, backupArea);
-        document.body.appendChild(popup);
-
-        // --- Drag Functionality ---
-        let isDragging = false;
-        let startX, startY, startL, startT;
-
-        header.addEventListener('pointerdown', (e) => {
-          if (e.target.closest('button')) return;
-          isDragging = true;
-          startX = e.clientX;
-          startY = e.clientY;
-          const rect = popup.getBoundingClientRect();
-          startL = rect.left;
-          startT = rect.top;
-          header.setPointerCapture(e.pointerId);
-          popup.style.transition = 'none';
-        });
-
-        header.addEventListener('pointermove', (e) => {
-          if (!isDragging) return;
-          const dx = e.clientX - startX;
-          const dy = e.clientY - startY;
-          popup.style.left = `${startL + dx}px`;
-          popup.style.top = `${startT + dy}px`;
-          popup.style.bottom = 'auto';
-          popup.style.right = 'auto';
-        });
-
-        header.addEventListener('pointerup', (e) => {
-          if (!isDragging) return;
-          isDragging = false;
-          header.releasePointerCapture(e.pointerId);
-          popup.style.transition = '';
-        });
-
-        // Action Handler
-        const handleAction = async (type) => {
-          if (!currentCompose) {
-            const candidates = document.querySelectorAll(COMPOSE_SELECTORS);
-            if (candidates.length === 1) {
-              currentCompose = candidates[0];
-            } else {
-              showMsg(msgArea, t('msg_error_no_body'), 'error');
-              return;
-            }
-          }
-          const body = getComposeBody(currentCompose);
-          const text = extractText(body);
-          if (!text) {
-            showMsg(msgArea, t('msg_error_empty'), 'error');
-            return;
-          }
-
-          // Loading state
-          const origLabels = {
-            optimize: btnOptimize.textContent,
-            translate: btnTranslate.textContent,
-            title: btnTitle.textContent,
-            check: btnCheck.textContent
-          };
-          const statusKeys = {
-            optimize: 'status_processing',
-            translate: 'status_translating',
-            title: 'status_generating',
-            check: 'status_checking'
-          };
-
-          const btns = [btnOptimize, btnTranslate, btnTitle, btnCheck];
-          btns.forEach(b => b.disabled = true);
-          const activeBtn = { optimize: btnOptimize, translate: btnTranslate, title: btnTitle, check: btnCheck }[type];
-          activeBtn.textContent = t(statusKeys[type]);
-          clearMsg(msgArea);
-
-          const backupSnapshot = { bodyEl: body, html: body.innerHTML, text };
-          const settings = await chrome.storage.local.get(['optimizePrompt', 'titlePrompt', 'checkPrompt', 'translateLang']);
-
-          let prompt = '';
-          if (type === 'optimize') prompt = settings.optimizePrompt || I18N.getDefaultPrompts(lang).optimize;
-          else if (type === 'title') prompt = settings.titlePrompt || I18N.getDefaultPrompts(lang).title;
-          else if (type === 'translate') prompt = `Translate to ${settings.translateLang || 'English'}: \n\n${text}`;
-          else if (type === 'check') {
-            if (!settings.checkPrompt) {
-              showMsg(msgArea, t('msg_error_no_check_prompt'), 'error');
-              btns.forEach(b => b.disabled = false);
-              activeBtn.textContent = origLabels[type];
-              return;
-            }
-            prompt = settings.checkPrompt;
-          }
-
-          chrome.runtime.sendMessage({ action: 'CALL_GEMINI_API', prompt, content: text }, response => {
-            btns.forEach(b => b.disabled = false);
-            activeBtn.textContent = origLabels[type];
-
-            if (response.success) {
-              const output = removeCommonModelDecorations(response.data);
-              if (type === 'title') {
-                const subjectInput = currentCompose.querySelector(SUBJECT_SELECTORS);
-                if (subjectInput) {
-                  setInputValue(subjectInput, normalizeTitle(output));
-                  showMsg(msgArea, t('msg_success_title') + normalizeTitle(output), 'success');
-                }
-              } else if (type === 'check') {
-                showMsg(msgArea, output, 'info');
-                msgArea.style.whiteSpace = 'pre-wrap';
-              } else {
-                replaceTextSafely(body, output);
-                activeBackupSnapshot = backupSnapshot;
-                showMsg(msgArea, type === 'translate' ? t('msg_success_trans') + (settings.translateLang || 'English') : t('msg_success_opt'), 'success');
-                
-                // Show Restore button
-                backupArea.innerHTML = '';
-                const restoreBtn = document.createElement('button');
-                restoreBtn.textContent = t('backup_restore');
-                Object.assign(restoreBtn.style, {
-                  marginTop: '8px', padding: '4px 8px', fontSize: '11px',
-                  backgroundColor: '#f1f3f4', border: '1px solid #dadce0',
-                  borderRadius: '4px', cursor: 'pointer'
-                });
-                restoreBtn.onclick = () => dispatchRestoreSnapshot(activeBackupSnapshot, msgArea, t, backupArea);
-                backupArea.append(restoreBtn);
-                backupArea.style.maxHeight = '100px';
-                backupArea.style.padding = '0 14px 8px 14px';
-              }
-            } else {
-              showMsg(msgArea, t('msg_error_api') + (response.error || 'Unknown error'), 'error');
-            }
-          });
-        };
-
-        btnOptimize.addEventListener('click', () => handleAction('optimize'));
-        btnTranslate.addEventListener('click', () => handleAction('translate'));
-        btnTitle.addEventListener('click', () => handleAction('title'));
-        btnCheck.addEventListener('click', () => handleAction('check'));
-
-        closeBtn.addEventListener('click', () => { popup.style.display = 'none'; });
-
-      } catch (err) {
-        console.error('[MailPilot] Popup creation failed:', err);
-      } finally {
-        popupPromise = null;
-      }
-    })();
-    return popupPromise;
-  }
-
-  function normalizeTitle(text) {
-    return removeCommonModelDecorations(text).replace(/\s+/g, ' ').trim();
-  }
-
-  function scanComposeWindows() {
-    const candidates = document.querySelectorAll(COMPOSE_SELECTORS);
+  function formatModelTextToHtml(text) {
+    // Remove common AI formatting like markdown blocks or quotes
+    let clean = String(text ?? '').replace(/\r\n/g, '\n').trim();
+    clean = clean.replace(/^```[a-zA-Z]*\n?/, '').replace(/\n?```$/, '').trim();
     
-    // 如果畫面上沒有任何寫信視窗，則隱藏浮動面板 
-    if (candidates.length === 0) {
-      if (popup && popup.style.display !== 'none') {
-        popup.style.display = 'none';
+    // Convert newlines to Gmail-friendly divs
+    return clean.split('\n').map(line => {
+      const escaped = String(line).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return line.trim() === '' ? '<div><br></div>' : `<div>${escaped}</div>`;
+    }).join('');
+  }
+
+  function updateComposeBody(bodyEl, newText) {
+    const signatureSelectors = '.gmail_signature, [data-smartmail="gmail_signature"], .gmail_quote, blockquote';
+    const preservedElements = Array.from(bodyEl.querySelectorAll(signatureSelectors));
+    
+    // Temporarily remove preserved elements to replace the main body
+    preservedElements.forEach(el => el.remove());
+    bodyEl.innerHTML = formatModelTextToHtml(newText);
+    
+    // Re-append signatures/quotes
+    preservedElements.forEach(el => bodyEl.appendChild(el));
+    
+    // Trigger input events for Gmail to detect change
+    const events = ['input', 'change'];
+    events.forEach(evtType => bodyEl.dispatchEvent(new Event(evtType, { bubbles: true })));
+  }
+
+  // --- UI Component Builders ---
+
+  function createHeader(onClose) {
+    const header = createElement('div', { className: 'mp-header' }, {
+      padding: '10px 12px',
+      backgroundColor: '#f8f9fa',
+      borderBottom: '1px solid #e8eaed',
+      cursor: 'grab',
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      userSelect: 'none'
+    });
+
+    const title = createElement('div', { textContent: t('ui_header') }, { fontWeight: '700', color: '#202124' });
+    const closeBtn = createElement('button', { innerHTML: '&#8722;', title: t('minimize_tooltip') }, {
+      background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px'
+    });
+    closeBtn.onclick = onClose;
+
+    header.append(title, closeBtn);
+    return { header, title, closeBtn };
+  }
+
+  function createActionButton(label, bgColor, onClick) {
+    const btn = createElement('button', { textContent: label }, {
+      padding: '8px 4px',
+      backgroundColor: bgColor,
+      color: '#fff',
+      border: 'none',
+      borderRadius: '8px',
+      cursor: 'pointer',
+      fontWeight: '600',
+      fontSize: '12px'
+    });
+    btn.onclick = onClick;
+    return btn;
+  }
+
+  // --- Main Logic ---
+
+  async function initPopup() {
+    if (popup) return;
+    uiLang = await getUILanguage();
+
+    popup = createElement('div', { id: 'mailpilot-popup' }, {
+      position: 'fixed',
+      width: '320px',
+      left: `${window.innerWidth - 360}px`,
+      top: '100px',
+      backgroundColor: '#fff',
+      border: '1px solid #dadce0',
+      borderRadius: '14px',
+      boxShadow: '0 8px 28px rgba(0,0,0,0.16)',
+      zIndex: '999999',
+      fontFamily: 'Google Sans, system-ui, sans-serif',
+      display: 'flex',
+      flexDirection: 'column',
+      overflow: 'hidden',
+      resize: 'both',
+      minWidth: '280px',
+      minHeight: '150px'
+    });
+    popup.style.setProperty('overflow', 'auto', 'important');
+
+    // UI Areas
+    const msgArea = createElement('div', {}, { overflow: 'hidden', transition: 'max-height 0.2s', fontSize: '12px' });
+    const backupArea = createElement('div', {}, { padding: '0 14px', overflow: 'hidden', transition: 'max-height 0.2s' });
+
+    const showMessage = (msg, type = 'info') => {
+      msgArea.textContent = msg;
+      msgArea.style.maxHeight = '200px';
+      msgArea.style.padding = '8px 14px';
+      const styles = {
+        error: { color: '#d93025', bg: '#fce8e6' },
+        success: { color: '#188038', bg: '#e6f4ea' },
+        info: { color: '#5f6368', bg: '#f1f3f4' }
+      };
+      const s = styles[type] || styles.info;
+      msgArea.style.color = s.color;
+      msgArea.style.backgroundColor = s.bg;
+    };
+
+    const clearUI = () => {
+      msgArea.style.maxHeight = '0';
+      msgArea.style.padding = '0 14px';
+      backupArea.style.maxHeight = '0';
+    };
+
+    // Header & Close
+    const { header, title: headerTitle, closeBtn } = createHeader(() => { popup.style.display = 'none'; });
+
+    // Buttons
+    const btnGrid = createElement('div', {}, { padding: '12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' });
+    
+    const handleAction = async (actionType) => {
+      if (!currentComposeWindow) {
+        const activeOnes = document.querySelectorAll(SELECTORS.COMPOSE_WINDOW);
+        if (activeOnes.length === 1) currentComposeWindow = activeOnes[0];
+        else { showMessage(t('msg_error_no_body'), 'error'); return; }
       }
-      currentCompose = null;
+
+      const body = getComposeBody(currentComposeWindow);
+      const text = extractCleanText(body);
+      if (!text) { showMessage(t('msg_error_empty'), 'error'); return; }
+
+      const labels = {
+        optimize: btnOptimize.textContent, translate: btnTranslate.textContent,
+        title: btnTitle.textContent, check: btnCheck.textContent
+      };
+      const buttons = [btnOptimize, btnTranslate, btnTitle, btnCheck];
+      const activeBtn = { optimize: btnOptimize, translate: btnTranslate, title: btnTitle, check: btnCheck }[actionType];
+
+      buttons.forEach(b => b.disabled = true);
+      activeBtn.textContent = t(`status_${actionType === 'title' ? 'generating' : (actionType === 'optimize' ? 'processing' : 'translating')}`);
+      clearUI();
+
+      const settings = await storageGet(['optimizePrompt', 'titlePrompt', 'checkPrompt', 'translateLang']);
+      let prompt = '';
+      if (actionType === 'optimize') prompt = settings.optimizePrompt || I18N.getDefaultPrompts(uiLang).optimize;
+      else if (actionType === 'title') prompt = settings.titlePrompt || I18N.getDefaultPrompts(uiLang).title;
+      else if (actionType === 'translate') prompt = `Translate to ${settings.translateLang || 'English'}: \n\n${text}`;
+      else if (actionType === 'check') prompt = settings.checkPrompt || '';
+
+      if (actionType === 'check' && !prompt) {
+        showMessage(t('msg_error_no_check_prompt'), 'error');
+        buttons.forEach(b => b.disabled = false);
+        activeBtn.textContent = labels[actionType];
+        return;
+      }
+
+      chrome.runtime.sendMessage({ action: 'CALL_GEMINI_API', prompt, content: text }, response => {
+        buttons.forEach(b => b.disabled = false);
+        activeBtn.textContent = labels[actionType];
+
+        if (response.success) {
+          const result = response.data.trim();
+          if (actionType === 'title') {
+            const input = currentComposeWindow.querySelector(SELECTORS.SUBJECT_INPUT);
+            if (input) {
+              input.value = result.replace(/\s+/g, ' ');
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+              showMessage(t('msg_success_title') + input.value, 'success');
+            }
+          } else if (actionType === 'check') {
+            showMessage(result, 'info');
+            msgArea.style.whiteSpace = 'pre-wrap';
+          } else {
+            activeBackup = { bodyEl: body, html: body.innerHTML };
+            updateComposeBody(body, result);
+            showMessage(actionType === 'translate' ? t('msg_success_trans') + (settings.translateLang || 'English') : t('msg_success_opt'), 'success');
+            
+            backupArea.innerHTML = '';
+            const restoreBtn = createActionButton(t('backup_restore'), '#f1f3f4', () => {
+              body.innerHTML = activeBackup.html;
+              updateComposeBody(body, extractCleanText(body)); // trigger events
+              clearUI();
+            });
+            restoreBtn.style.color = '#3c4043';
+            restoreBtn.style.border = '1px solid #dadce0';
+            backupArea.append(restoreBtn);
+            backupArea.style.maxHeight = '100px';
+          }
+        } else {
+          showMessage(t('msg_error_api') + response.error, 'error');
+        }
+      });
+    };
+
+    const btnOptimize = createActionButton(t('btn_optimize'), '#1a73e8', () => handleAction('optimize'));
+    const btnTranslate = createActionButton(t('btn_translate'), '#34a853', () => handleAction('translate'));
+    const btnTitle = createActionButton(t('btn_title'), '#fbbc05', () => handleAction('title'));
+    const btnCheck = createActionButton(t('btn_check'), '#ea4335', () => handleAction('check'));
+
+    btnGrid.append(btnOptimize, btnTranslate, btnTitle, btnCheck);
+
+    // Storage Listener for Language Sync
+    chrome.storage.onChanged.addListener((changes) => {
+      if (changes.uiLang) {
+        uiLang = changes.uiLang.newValue || 'en';
+        headerTitle.textContent = t('ui_header');
+        btnOptimize.textContent = t('btn_optimize');
+        btnTranslate.textContent = t('btn_translate');
+        btnTitle.textContent = t('btn_title');
+        btnCheck.textContent = t('btn_check');
+        closeBtn.title = t('minimize_tooltip');
+      }
+    });
+
+    // Drag Functionality
+    let dragging = false;
+    let offset = { x: 0, y: 0 };
+    header.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('button')) return;
+      dragging = true;
+      const rect = popup.getBoundingClientRect();
+      offset = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      header.setPointerCapture(e.pointerId);
+      popup.style.transition = 'none';
+    });
+    header.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      popup.style.left = `${e.clientX - offset.x}px`;
+      popup.style.top = `${e.clientY - offset.y}px`;
+    });
+    header.addEventListener('pointerup', (e) => {
+      dragging = false;
+      header.releasePointerCapture(e.pointerId);
+      popup.style.transition = '';
+    });
+
+    popup.append(header, btnGrid, msgArea, backupArea);
+    document.body.appendChild(popup);
+  }
+
+  function scanAndInject() {
+    const windows = document.querySelectorAll(SELECTORS.COMPOSE_WINDOW);
+    
+    if (windows.length === 0) {
+      if (popup) popup.style.display = 'none';
+      currentComposeWindow = null;
       return;
     }
 
-    // 如果目前的 currentCompose 已經不在 DOM 中，則清空它 
-    if (currentCompose && !currentCompose.isConnected) {
-      currentCompose = null;
+    if (currentComposeWindow && !currentComposeWindow.isConnected) {
+      currentComposeWindow = null;
     }
 
-    candidates.forEach(win => {
-      if (!win.hasAttribute(DATA_INJECTED)) {
-        win.setAttribute(DATA_INJECTED, '1');
-        // 當使用者點擊或聚焦在寫信視窗時，更新目前的 currentCompose
-        win.addEventListener('focusin', () => {
-          currentCompose = win;
-        });
-        win.addEventListener('click', () => {
-          currentCompose = win;
-        });
+    windows.forEach(win => {
+      if (!win.hasAttribute(ATTR_INJECTED)) {
+        win.setAttribute(ATTR_INJECTED, '1');
+        const updateCurrent = () => { currentComposeWindow = win; };
+        win.addEventListener('focusin', updateCurrent);
+        win.addEventListener('click', updateCurrent);
       }
-      
-      const body = win.querySelector(BODY_SELECTOR);
-      if (!body) return;
 
-      createPopup().then(() => {
-        if (popup) popup.style.display = 'flex';
-      });
+      if (win.querySelector(SELECTORS.BODY_EDITOR)) {
+        initPopup().then(() => { if (popup) popup.style.display = 'flex'; });
+      }
     });
   }
 
-  window.MailPilot = { scanComposeState: scanComposeWindows };
-  setInterval(scanComposeWindows, 1500);
+  setInterval(scanAndInject, 1500);
 })();

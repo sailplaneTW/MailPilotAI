@@ -1,207 +1,186 @@
-// options/options.js
-document.addEventListener('DOMContentLoaded', restoreOptions);
-document.getElementById('saveBtn').addEventListener('click', saveOptions);
-document.getElementById('uiLang').addEventListener('change', onUILanguageChange);
+/**
+ * options/options.js
+ * Logic for the MailPilot AI Settings page.
+ */
+(() => {
+  const { storageGet, storageSet, getUILanguage } = window.MailPilotUtils;
+  const I18N = window.i18n;
 
-document.getElementById('toggleApiKeyBtn').addEventListener('click', function () {
-    const input = document.getElementById('apiKey');
-    const uiLang = document.getElementById('uiLang').value;
+  // --- UI Elements ---
+  const el = {
+    uiLang: document.getElementById('uiLang'),
+    apiKey: document.getElementById('apiKey'),
+    model: document.getElementById('model'),
+    optimizePrompt: document.getElementById('optimizePrompt'),
+    titlePrompt: document.getElementById('titlePrompt'),
+    checkPrompt: document.getElementById('checkPrompt'),
+    translateLang: document.getElementById('translateLang'),
+    enableDoubleConfirm: document.getElementById('enableDoubleConfirm'),
+    status: document.getElementById('status'),
+    saveBtn: document.getElementById('saveBtn'),
+    fetchModelsBtn: document.getElementById('fetchModelsBtn'),
+    toggleApiKeyBtn: document.getElementById('toggleApiKeyBtn')
+  };
 
-    if (input.type === 'password') {
-        input.type = 'text';
-        this.textContent = window.i18n.getMessage('opt_hide', uiLang);
-    } else {
-        input.type = 'password';
-        this.textContent = window.i18n.getMessage('opt_show', uiLang);
-    }
-});
-
-function applyI18n(lang) {
-    document.querySelectorAll('[data-i18n]').forEach(el => {
-        const key = el.getAttribute('data-i18n');
-        el.textContent = window.i18n.getMessage(key, lang);
+  /**
+   * Translate UI elements based on current language
+   */
+  function applyI18n(lang) {
+    document.querySelectorAll('[data-i18n]').forEach(item => {
+      const key = item.getAttribute('data-i18n');
+      item.textContent = I18N.getMessage(key, lang);
     });
-}
+  }
 
-function isCloudLanguageModel(model) {
-    if (!model || typeof model !== 'object') return false;
-    const id = String(model.name || model.displayName || '').toLowerCase();
-    const methods = Array.isArray(model.supportedGenerationMethods) ? model.supportedGenerationMethods : [];
+  /**
+   * Update placeholder prompts when language changes
+   */
+  function updatePromptPlaceholders(lang) {
+    const defaults = I18N.getDefaultPrompts(lang);
+    el.optimizePrompt.placeholder = defaults.optimize;
+    el.titlePrompt.placeholder = defaults.title;
+  }
 
-    if (!methods.includes('generateContent')) return false;
-    if (id.includes('gemma') || id.includes('embed') || id.includes('embedding')) return false;
-    if (id.includes('image') || id.includes('vision') || id.includes('imagen')) return false;
-    if (id.includes('aqa') || id.includes('tts')) return false;
-    return true;
-}
+  /**
+   * Helper to determine if a prompt is one of the defaults
+   */
+  function isDefaultPrompt(val, type) {
+    if (!val) return true;
+    const langs = ['en', 'zh_TW', 'zh_CN'];
+    return langs.some(l => val === I18N.getDefaultPrompts(l)[type]);
+  }
 
-async function fetchAndPopulateModels() {
-    const apiKey = document.getElementById('apiKey').value.trim();
-    if (!apiKey) return;
+  /**
+   * Fetch available Gemini models from the API
+   */
+  async function refreshModels() {
+    const key = el.apiKey.value.trim();
+    if (!key) return;
 
-    const btn = document.getElementById('fetchModelsBtn');
-    const select = document.getElementById('model');
-    const uiLang = document.getElementById('uiLang').value;
-
-    const previousValue = select.value;
-    const hadExistingOptions = select.options.length > 0;
-
-    btn.textContent = '...';
-    btn.disabled = true;
-    select.disabled = true;
+    el.fetchModelsBtn.disabled = true;
+    el.fetchModelsBtn.textContent = '...';
 
     try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`;
-        const resp = await fetch(url);
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`;
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
-        const data = await resp.json();
-        const models = Array.isArray(data.models) ? data.models.filter(isCloudLanguageModel) : [];
-        if (!models.length) throw new Error('No compatible models');
+      const data = await resp.json();
+      const models = (data.models || [])
+        .filter(m => m.supportedGenerationMethods.includes('generateContent'))
+        .filter(m => !m.name.includes('vision') && !m.name.includes('embed'));
 
-        const modelIds = models.map(m => String(m.name || '').replace(/^models\//, '')).filter(Boolean);
-        const fragment = document.createDocumentFragment();
+      if (!models.length) throw new Error('No compatible models');
 
-        modelIds.forEach((id, index) => {
-            const opt = document.createElement('option');
-            opt.value = id;
-            opt.textContent = models[index].displayName || id;
-            fragment.appendChild(opt);
-        });
+      const currentVal = el.model.value;
+      el.model.innerHTML = '';
+      models.forEach(m => {
+        const id = m.name.replace(/^models\//, '');
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = m.displayName || id;
+        el.model.appendChild(opt);
+      });
 
-        if (previousValue && !modelIds.includes(previousValue)) {
-            const opt = document.createElement('option');
-            opt.value = previousValue;
-            opt.textContent = previousValue;
-            fragment.appendChild(opt);
-        }
-
-        select.innerHTML = '';
-        select.appendChild(fragment);
-        select.disabled = false;
-
-        if (previousValue) select.value = previousValue;
-
-        btn.textContent = window.i18n.getMessage('opt_update_models', uiLang);
-    } catch (e) {
-        btn.textContent = window.i18n.getMessage('opt_fetch_failed', uiLang);
-        if (hadExistingOptions) {
-            select.disabled = false;
-            select.value = previousValue;
-        }
+      if (currentVal) el.model.value = currentVal;
+      el.model.disabled = false;
+      el.fetchModelsBtn.textContent = I18N.getMessage('opt_update_models', el.uiLang.value);
+    } catch (err) {
+      console.error('[MailPilot] Model fetch failed:', err);
+      el.fetchModelsBtn.textContent = I18N.getMessage('opt_fetch_failed', el.uiLang.value);
     } finally {
-        btn.disabled = false;
+      el.fetchModelsBtn.disabled = false;
     }
-}
+  }
 
-document.getElementById('apiKey').addEventListener('blur', () => {
-    document.getElementById('fetchModelsBtn').disabled = false;
-    fetchAndPopulateModels();
-});
-
-document.getElementById('fetchModelsBtn').addEventListener('click', () => fetchAndPopulateModels());
-
-function onUILanguageChange(e) {
-    const newLang = e.target.value;
-    // 立即儲存語系設定，觸發 onChanged 事件給其他分頁 (如 Gmail 內視窗)
-    chrome.storage.local.set({ uiLang: newLang }, () => {
-        applyI18n(newLang);
-        updateDefaultPrompts(newLang);
-
-        // 同步更新密碼顯示/隱藏按鈕的文字
-        const apiKeyInput = document.getElementById('apiKey');
-        const toggleBtn = document.getElementById('toggleApiKeyBtn');
-        toggleBtn.textContent = window.i18n.getMessage(apiKeyInput.type === 'password' ? 'opt_show' : 'opt_hide', newLang);
-    });
-}
-
-// 輔助函式：判斷當前文字是否為任一語系的預設提示詞
-function isAnyDefaultPrompt(value, type) {
-    if (!value) return true;
-    const langs = ['en', 'zh_TW', 'zh_CN'];
-    return langs.some(l => value === window.i18n.getDefaultPrompts(l)[type]);
-}
-
-function updateDefaultPrompts(lang) {
-    const defaults = window.i18n.getDefaultPrompts(lang);
-    const optimizeEl = document.getElementById('optimizePrompt');
-    const titleEl = document.getElementById('titlePrompt');
-
-    // 如果文字框是空的，或者內容剛好是某個語系的預設提示詞，就跟著新語系連動切換
-    if (isAnyDefaultPrompt(optimizeEl.value, 'optimize')) {
-        optimizeEl.value = defaults.optimize;
-    }
-    if (isAnyDefaultPrompt(titleEl.value, 'title')) {
-        titleEl.value = defaults.title;
-    }
-
-    // 更新佔位符
-    optimizeEl.placeholder = defaults.optimize;
-    titleEl.placeholder = defaults.title;
-}
-
-function saveOptions() {
-    const uiLang = document.getElementById('uiLang').value;
+  /**
+   * Save settings to storage
+   */
+  async function saveSettings() {
     const data = {
-        uiLang,
-        apiKey: document.getElementById('apiKey').value.trim(),
-        model: document.getElementById('model').value,
-        optimizePrompt: document.getElementById('optimizePrompt').value,
-        translateLang: document.getElementById('translateLang').value,
-        titlePrompt: document.getElementById('titlePrompt').value,
-        checkPrompt: document.getElementById('checkPrompt').value,
-        enableDoubleConfirm: document.getElementById('enableDoubleConfirm').checked
+      uiLang: el.uiLang.value,
+      apiKey: el.apiKey.value.trim(),
+      model: el.model.value,
+      optimizePrompt: el.optimizePrompt.value,
+      titlePrompt: el.titlePrompt.value,
+      checkPrompt: el.checkPrompt.value,
+      translateLang: el.translateLang.value,
+      enableDoubleConfirm: el.enableDoubleConfirm.checked
     };
-    chrome.storage.local.set(data, () => {
-        const status = document.getElementById('status');
-        status.textContent = window.i18n.getMessage('opt_saved', uiLang);
-        setTimeout(() => { status.textContent = ''; }, 2000);
-    });
-}
 
-function restoreOptions() {
-    chrome.storage.local.get([
-        'uiLang', 'apiKey', 'model', 'optimizePrompt', 'translateLang',
-        'titlePrompt', 'checkPrompt', 'enableDoubleConfirm'
-    ], async (items) => {
-        const lang = items.uiLang || 'en';
-        document.getElementById('uiLang').value = lang;
-        applyI18n(lang);
+    await storageSet(data);
+    el.status.textContent = I18N.getMessage('opt_saved', el.uiLang.value);
+    setTimeout(() => { el.status.textContent = ''; }, 2000);
+  }
 
-        const defaults = window.i18n.getDefaultPrompts(lang);
-        const optimizeEl = document.getElementById('optimizePrompt');
-        const titleEl = document.getElementById('titlePrompt');
+  /**
+   * Load settings and initialize UI
+   */
+  async function loadSettings() {
+    const items = await storageGet([
+      'uiLang', 'apiKey', 'model', 'optimizePrompt', 
+      'titlePrompt', 'checkPrompt', 'translateLang', 'enableDoubleConfirm'
+    ]);
 
-        // 載入預設值
-        optimizeEl.value = items.optimizePrompt || defaults.optimize;
-        titleEl.value = items.titlePrompt || defaults.title;
-        optimizeEl.placeholder = defaults.optimize;
-        titleEl.placeholder = defaults.title;
+    const lang = items.uiLang || 'en';
+    el.uiLang.value = lang;
+    applyI18n(lang);
+    updatePromptPlaceholders(lang);
 
-        const apiKeyInput = document.getElementById('apiKey');
-        const modelSelect = document.getElementById('model');
-        const fetchBtn = document.getElementById('fetchModelsBtn');
+    el.apiKey.value = items.apiKey || '';
+    if (items.apiKey) {
+      el.model.disabled = false;
+      el.fetchModelsBtn.disabled = false;
+      // Add existing model if it's not in the default list
+      if (items.model) {
+        const opt = document.createElement('option');
+        opt.value = items.model;
+        opt.textContent = items.model;
+        el.model.appendChild(opt);
+        el.model.value = items.model;
+      }
+      refreshModels();
+    }
 
-        if (items.apiKey) {
-            apiKeyInput.value = items.apiKey;
-            modelSelect.disabled = false;
-            fetchBtn.disabled = false;
+    el.translateLang.value = items.translateLang || 'English';
+    el.checkPrompt.value = items.checkPrompt || '';
+    el.enableDoubleConfirm.checked = items.enableDoubleConfirm !== false;
 
-            if (items.model) {
-                const opt = document.createElement('option');
-                opt.value = items.model;
-                opt.textContent = items.model;
-                modelSelect.appendChild(opt);
-                modelSelect.value = items.model;
-            }
+    // Load prompts with auto-sync logic
+    const defaults = I18N.getDefaultPrompts(lang);
+    el.optimizePrompt.value = items.optimizePrompt || defaults.optimize;
+    el.titlePrompt.value = items.titlePrompt || defaults.title;
 
-            await fetchAndPopulateModels();
-            if (items.model) modelSelect.value = items.model;
-        }
+    el.toggleApiKeyBtn.textContent = I18N.getMessage('opt_show', lang);
+  }
 
-        document.getElementById('translateLang').value = items.translateLang || 'English';
-        document.getElementById('checkPrompt').value = items.checkPrompt || '';
-        document.getElementById('enableDoubleConfirm').checked = items.enableDoubleConfirm !== false;
-        document.getElementById('toggleApiKeyBtn').textContent = window.i18n.getMessage('opt_show', lang);
-    });
-}
+  // --- Listeners ---
+  el.uiLang.addEventListener('change', async (e) => {
+    const lang = e.target.value;
+    await storageSet({ uiLang: lang });
+    applyI18n(lang);
+    updatePromptPlaceholders(lang);
+
+    if (isDefaultPrompt(el.optimizePrompt.value, 'optimize')) {
+      el.optimizePrompt.value = I18N.getDefaultPrompts(lang).optimize;
+    }
+    if (isDefaultPrompt(el.titlePrompt.value, 'title')) {
+      el.titlePrompt.value = I18N.getDefaultPrompts(lang).title;
+    }
+    
+    el.toggleApiKeyBtn.textContent = I18N.getMessage(el.apiKey.type === 'password' ? 'opt_show' : 'opt_hide', lang);
+  });
+
+  el.toggleApiKeyBtn.addEventListener('click', () => {
+    const isPass = el.apiKey.type === 'password';
+    el.apiKey.type = isPass ? 'text' : 'password';
+    el.toggleApiKeyBtn.textContent = I18N.getMessage(isPass ? 'opt_hide' : 'opt_show', el.uiLang.value);
+  });
+
+  el.apiKey.addEventListener('blur', refreshModels);
+  el.fetchModelsBtn.addEventListener('click', refreshModels);
+  el.saveBtn.addEventListener('click', saveSettings);
+
+  // Initialize
+  document.addEventListener('DOMContentLoaded', loadSettings);
+})();

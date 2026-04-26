@@ -1,46 +1,56 @@
-// background/service-worker.js
+/**
+ * background/service-worker.js
+ * Central message hub and API handler for MailPilot AI.
+ */
 
+/**
+ * Message Dispatcher
+ */
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'CALL_GEMINI_API') {
     handleGeminiRequest(request.prompt, request.content)
       .then(result => sendResponse({ success: true, data: result }))
       .catch(error => {
         console.error('[MailPilot AI] API Error:', error);
-        sendResponse({ success: false, error: error?.message || 'Unknown error' });
+        sendResponse({ success: false, error: error?.message || 'Unknown API Error' });
       });
-    return true; // 保持異步通道
+    return true; // Keep async channel open
   }
 });
 
-async function readErrorMessage(response) {
-  const fallback = `HTTP ${response.status}: API request failed`;
-
+/**
+ * Parses detailed error messages from Google API responses
+ */
+async function parseErrorResponse(response) {
+  const defaultMsg = `HTTP ${response.status}: Request failed`;
   try {
     const text = await response.text();
-    if (!text) return fallback;
-
-    try {
-      const data = JSON.parse(text);
-      return data?.error?.message || data?.message || fallback;
-    } catch {
-      return text.trim() || fallback;
-    }
+    if (!text) return defaultMsg;
+    const json = JSON.parse(text);
+    return json?.error?.message || json?.message || text.trim() || defaultMsg;
   } catch {
-    return fallback;
+    return defaultMsg;
   }
 }
 
+/**
+ * Executes a request to the Gemini API
+ */
 async function handleGeminiRequest(systemPrompt, userContent) {
-  const { apiKey, model = 'gemini-2.0-flash' } = await chrome.storage.local.get(['apiKey', 'model']);
-  if (!apiKey) throw new Error('API Key is missing. Please set it in options.');
+  const { apiKey, model = 'gemini-1.5-flash' } = await chrome.storage.local.get(['apiKey', 'model']);
+  
+  if (!apiKey) {
+    throw new Error('API Key is missing. Please configure it in the extension settings.');
+  }
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models';
+  const endpoint = `${baseUrl}/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
   const payload = {
     contents: [{
       parts: [
-        { text: String(systemPrompt ?? '') },
-        { text: "Input Text:\n" + String(userContent ?? '') }
+        { text: `System Instruction: ${String(systemPrompt ?? '')}` },
+        { text: `User Email Content:\n${String(userContent ?? '')}` }
       ]
     }],
     generationConfig: {
@@ -56,25 +66,23 @@ async function handleGeminiRequest(systemPrompt, userContent) {
   });
 
   if (!response.ok) {
-    throw new Error(await readErrorMessage(response));
+    const errorDetail = await parseErrorResponse(response);
+    throw new Error(errorDetail);
   }
 
   const data = await response.json();
+  
+  // Extract text from candidates
   const parts = data?.candidates?.[0]?.content?.parts;
-  const text = Array.isArray(parts)
-    ? parts
-      .map(part => (typeof part?.text === 'string' ? part.text : ''))
-      .join('')
-      .trim()
+  const resultText = Array.isArray(parts)
+    ? parts.map(p => (typeof p?.text === 'string' ? p.text : '')).join('').trim()
     : '';
 
-  if (!text) {
+  if (!resultText) {
     const blockReason = data?.promptFeedback?.blockReason;
-    if (blockReason) {
-      throw new Error(`Gemini blocked the request: ${blockReason}`);
-    }
-    throw new Error('Invalid response format from Gemini API');
+    if (blockReason) throw new Error(`Request blocked by safety filters: ${blockReason}`);
+    throw new Error('Empty or invalid response from Gemini.');
   }
 
-  return text;
+  return resultText;
 }
