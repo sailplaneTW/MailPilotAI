@@ -1,6 +1,6 @@
 (() => {
-  if (window.__mailrefineSendGuardInstalled) return;
-  window.__mailrefineSendGuardInstalled = true;
+  if (window.__mailpilotSendGuardInstalled) return;
+  window.__mailpilotSendGuardInstalled = true;
 
   const SEND_BUTTON_SELECTORS = [
     'div[role="button"][data-tooltip*="Send"]',

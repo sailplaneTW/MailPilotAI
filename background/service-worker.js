@@ -4,18 +4,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'CALL_GEMINI_API') {
     handleGeminiRequest(request.prompt, request.content)
       .then(result => sendResponse({ success: true, data: result }))
-      .catch(error => sendResponse({ success: false, error: error.message }));
-
-    return true; // Indicates asynchronous response
+      .catch(error => {
+        console.error('[MailPilot AI] API Error:', error);
+        sendResponse({ success: false, error: error.message });
+      });
+    return true; // 保持異步通道
   }
 });
 
 async function handleGeminiRequest(systemPrompt, userContent) {
   const { apiKey, model = 'gemini-2.0-flash' } = await chrome.storage.local.get(['apiKey', 'model']);
-
-  if (!apiKey) {
-    throw new Error('API Key is missing. Please set it in options.');
-  }
+  if (!apiKey) throw new Error('API Key is missing. Please set it in options.');
 
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
@@ -23,12 +22,12 @@ async function handleGeminiRequest(systemPrompt, userContent) {
     contents: [{
       parts: [
         { text: systemPrompt },
-        { text: "\n\nContent to process:\n" + userContent }
+        { text: "Input Text:\n" + userContent }
       ]
     }],
     generationConfig: {
       temperature: 0.7,
-      maxOutputTokens: 1024,
+      maxOutputTokens: 2048, // 增加 Token 限制以處理較長信件
     }
   };
 
@@ -40,9 +39,12 @@ async function handleGeminiRequest(systemPrompt, userContent) {
 
   if (!response.ok) {
     const err = await response.json();
-    throw new Error(err.error?.message || 'API request failed');
+    throw new Error(err.error?.message || `HTTP ${response.status}: API request failed`);
   }
 
   const data = await response.json();
+  if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
+    throw new Error('Invalid response format from Gemini API');
+  }
   return data.candidates[0].content.parts[0].text;
 }

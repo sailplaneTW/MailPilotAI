@@ -2,7 +2,7 @@
 
 const I18N_DICT = {
   en: {
-    opt_title: "MailRefine Settings",
+    opt_title: "MailPilot Settings",
     opt_ui_lang: "UI Language",
     opt_api_key: "Gemini API Key",
     opt_model: "Model",
@@ -15,7 +15,7 @@ const I18N_DICT = {
     opt_save: "Save Settings",
     opt_saved: "Settings saved!",
 
-    ui_header: "MailRefine gmail Assistant",
+    ui_header: "MailPilot gmail Assistant",
     btn_optimize: "✨ Optimize",
     btn_translate: "🌐 Translate",
     btn_title: "📝 Optimize Subject",
@@ -46,7 +46,7 @@ const I18N_DICT = {
     prompt_default_title: "Please generate an email subject based on the content and language of the email body."
   },
   zh_TW: {
-    opt_title: "MailRefine 設定",
+    opt_title: "MailPilot 設定",
     opt_ui_lang: "介面語系",
     opt_api_key: "Gemini API Key",
     opt_model: "模型",
@@ -59,7 +59,7 @@ const I18N_DICT = {
     opt_save: "儲存設定",
     opt_saved: "設定已儲存！",
 
-    ui_header: "MailRefine gmail 助理",
+    ui_header: "MailPilot gmail 助理",
     btn_optimize: "✨ 優化內文",
     btn_translate: "🌐 翻譯內文",
     btn_title: "📝 優化標題",
@@ -89,7 +89,7 @@ const I18N_DICT = {
     prompt_default_title: "請根據內文的內容及語系替我產生信件標題"
   },
   zh_CN: {
-    opt_title: "MailRefine 设置",
+    opt_title: "MailPilot 设置",
     opt_ui_lang: "界面语言",
     opt_api_key: "Gemini API Key",
     opt_model: "模型",
@@ -102,7 +102,7 @@ const I18N_DICT = {
     opt_save: "保存设置",
     opt_saved: "设置已保存！",
 
-    ui_header: "MailRefine gmail 助手",
+    ui_header: "MailPilot gmail 助手",
     btn_optimize: "✨ 优化正文",
     btn_translate: "🌐 翻译正文",
     btn_title: "📝 优化标题",

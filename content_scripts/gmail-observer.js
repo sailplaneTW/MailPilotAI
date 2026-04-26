@@ -1,12 +1,12 @@
 (() => {
-  if (window.__mailrefineObserverInstalled) return;
-  window.__mailrefineObserverInstalled = true;
+  if (window.__mailpilotObserverInstalled) return;
+  window.__mailpilotObserverInstalled = true;
 
   const queueScan = () => {
     try {
-      window.MailRefine?.scanComposeState?.();
+      window.MailPilot?.scanComposeState?.();
     } catch (err) {
-      console.error('[MailRefine][observer]', err);
+      console.error('[MailPilot][observer]', err);
     }
   };
 
