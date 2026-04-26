@@ -87,10 +87,15 @@
     }
   }, 2000);
 
-  async function createPopup() {
-    if (popup) return;
-    const lang = await getLang();
-    const t = (key) => I18N.getMessage(key, lang);
+  let popupPromise = null;
+  function createPopup() {
+    if (popup) return Promise.resolve();
+    if (popupPromise) return popupPromise;
+
+    popupPromise = (async () => {
+      try {
+        const lang = await getLang();
+        const t = (key) => I18N.getMessage(key, lang);
 
     // Main Panel
     popup = document.createElement('div');
@@ -108,6 +113,12 @@
       display: 'flex', flexDirection: 'column', overflow: 'hidden',
       resize: 'both', minWidth: '240px', minHeight: '150px'
     });
+    
+    // Enforce critical styles with !important to prevent Gmail CSS overrides
+    popup.style.setProperty('resize', 'both', 'important');
+    popup.style.setProperty('overflow', 'hidden', 'important');
+    popup.style.setProperty('position', 'fixed', 'important');
+    popup.style.setProperty('display', 'flex', 'important');
 
     // Header
     const header = document.createElement('div');
@@ -196,25 +207,10 @@
     closeBtn.addEventListener('click', minimize);
     minimizeBtn.addEventListener('click', restore);
 
-    // Drag Functionality
+    // Drag Functionality (Using Pointer Events for robustness against Gmail's event interception)
     let isDragging = false, startX, startY, popupLeft, popupTop;
-    const onMouseMove = (e) => {
-      if (!isDragging) return;
-      popup.style.left = `${popupLeft + e.clientX - startX}px`;
-      popup.style.top = `${popupTop + e.clientY - startY}px`;
-      popup.style.bottom = 'auto';
-      popup.style.right = 'auto';
-      e.preventDefault();
-      e.stopPropagation();
-    };
-    const onMouseUp = (e) => {
-      if (isDragging) {
-        isDragging = false;
-        header.style.cursor = 'grab';
-        e.stopPropagation();
-      }
-    };
-    header.addEventListener('mousedown', (e) => {
+    
+    header.addEventListener('pointerdown', (e) => {
       if (e.target === closeBtn) return;
       isDragging = true;
       header.style.cursor = 'grabbing';
@@ -223,11 +219,29 @@
       const rect = popup.getBoundingClientRect();
       popupLeft = rect.left;
       popupTop = rect.top;
+      header.setPointerCapture(e.pointerId);
       e.preventDefault();
       e.stopPropagation();
     });
-    window.addEventListener('mousemove', onMouseMove, { capture: true });
-    window.addEventListener('mouseup', onMouseUp, { capture: true });
+
+    header.addEventListener('pointermove', (e) => {
+      if (!isDragging) return;
+      popup.style.setProperty('left', `${popupLeft + e.clientX - startX}px`, 'important');
+      popup.style.setProperty('top', `${popupTop + e.clientY - startY}px`, 'important');
+      popup.style.setProperty('bottom', 'auto', 'important');
+      popup.style.setProperty('right', 'auto', 'important');
+      e.preventDefault();
+      e.stopPropagation();
+    });
+
+    header.addEventListener('pointerup', (e) => {
+      if (isDragging) {
+        isDragging = false;
+        header.style.cursor = 'grab';
+        header.releasePointerCapture(e.pointerId);
+        e.stopPropagation();
+      }
+    });
 
     // UI Helpers
     function showMsg(html, type = 'info') {
@@ -371,6 +385,11 @@
     btnTranslate.addEventListener('click', () => handleAction('translate'));
     btnTitle.addEventListener('click', () => handleAction('title'));
     btnCheck.addEventListener('click', () => handleAction('check'));
+      } finally {
+        popupPromise = null;
+      }
+    })();
+    return popupPromise;
   }
 
   // ── Scanner: Detect new compose windows ──────────────────
