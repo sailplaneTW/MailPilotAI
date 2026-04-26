@@ -1,28 +1,18 @@
 {
   "manifest_version": 3,
-  "name": "MailPilot AI – Gmail Writing Helper",
-  "short_name": "MailPilot AI",
+  "name": "MailPilot AI",
   "version": "1.0.0",
-  "description": "Gmail AI writer that helps you compose, rewrite, and improve emails instantly. Boost productivity with smart email assistance.",
-  "icons": {
-    "16": "images/logo.png",
-    "48": "images/logo.png",
-    "128": "images/logo.png"
-  },
-  "action": {
-    "default_icon": "images/logo.png",
-    "default_popup": "popup/popup.html"
-  },
+  "description": "AI-powered Gmail compose assistant with optimization, translation, and safety guard.",
   "permissions": [
-    "storage"
+    "storage",
+    "scripting"
   ],
   "host_permissions": [
     "https://mail.google.com/*",
     "https://generativelanguage.googleapis.com/*"
   ],
   "background": {
-    "service_worker": "background/service-worker.js",
-    "type": "module"
+    "service_worker": "background/service-worker.js"
   },
   "content_scripts": [
     {
@@ -31,21 +21,19 @@
       ],
       "js": [
         "utils/i18n.js",
-        "content_scripts/send-guard.js",
         "content_scripts/compose-injector.js",
-        "content_scripts/gmail-observer.js"
+        "content_scripts/send-guard.js"
       ],
-      "run_at": "document_end"
+      "run_at": "document_idle"
     }
   ],
-  "options_ui": {
-    "page": "options/options.html",
-    "open_in_tab": true
+  "action": {
+    "default_popup": "popup/popup.html"
   },
-  "browser_specific_settings": {
-    "gecko": {
-      "id": "mailpilotai@yourdomain.com",
-      "strict_min_version": "109.0"
-    }
+  "options_page": "options/options.html",
+  "icons": {
+    "16": "images/logo.png",
+    "48": "images/logo.png",
+    "128": "images/logo.png"
   }
 }

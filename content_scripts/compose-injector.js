@@ -3,7 +3,8 @@
   if (window.__mailpilotComposeInjectorInstalled) return;
   window.__mailpilotComposeInjectorInstalled = true;
 
-  const I18N = window.i18n || {
+  // 確保能正確取得 i18n 工具 
+  const getI18n = () => window.i18n || {
     getMessage: (k) => k,
     getDefaultPrompts: () => ({ optimize: '', title: '' })
   };
@@ -18,13 +19,6 @@
     return composeEl.querySelector(BODY_SELECTOR);
   }
 
-  function extractText(bodyEl) {
-    const clone = bodyEl.cloneNode(true);
-    clone.querySelectorAll('.gmail_signature, [data-smartmail="gmail_signature"], .gmail_quote, blockquote')
-      .forEach(el => el.remove());
-    return clone.innerText.trim();
-  }
-
   function escapeHtml(str) {
     return String(str)
       .replace(/&/g, '&amp;')
@@ -33,12 +27,43 @@
       .replace(/"/g, '&quot;');
   }
 
-  function replaceTextSafely(bodyEl, newText) {
-    const html = newText.split('\n').map(line => {
-      const trimmed = line.trim();
-      return trimmed === '' ? '<div><br></div>' : `<div>${escapeHtml(trimmed)}</div>`;
-    }).join('');
+  function removeCommonModelDecorations(text) {
+    let out = String(text ?? '').replace(/\r\n/g, '\n').trim();
+    out = out.replace(/^```[a-zA-Z]*\n?/, '').replace(/\n?```$/, '').trim();
+    const quotePairs = [['"', '"'], ['“', '”'], ['‘', '’'], ['「', '」'], ['『', '』'], ['«', '»']];
+    for (const [open, close] of quotePairs) {
+      if (out.startsWith(open) && out.endsWith(close) && out.length >= 2) {
+        out = out.slice(open.length, out.length - close.length).trim();
+        break;
+      }
+    }
+    return out;
+  }
 
+  function modelTextToGmailHtml(newText) {
+    const clean = removeCommonModelDecorations(newText);
+    return clean.split('\n').map(line => {
+      return line.trim() === '' ? '<div><br></div>' : `<div>${escapeHtml(line)}</div>`;
+    }).join('');
+  }
+
+  function dispatchComposeUpdate(bodyEl) {
+    try {
+      bodyEl.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: null }));
+    } catch {
+      bodyEl.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    bodyEl.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  function extractText(bodyEl) {
+    const clone = bodyEl.cloneNode(true);
+    clone.querySelectorAll('.gmail_signature, [data-smartmail="gmail_signature"], .gmail_quote, blockquote')
+      .forEach(el => el.remove());
+    return (clone.innerText || clone.textContent || '').trim();
+  }
+
+  function replaceTextSafely(bodyEl, newText) {
     const preservedSelectors = '.gmail_signature, [data-smartmail="gmail_signature"], .gmail_quote, blockquote';
     const preserved = [];
     bodyEl.querySelectorAll(preservedSelectors).forEach(el => {
@@ -54,19 +79,16 @@
       if (!isNested) preserved.push(el);
     });
     preserved.forEach(el => el.remove());
-
-    bodyEl.innerHTML = html;
+    bodyEl.innerHTML = modelTextToGmailHtml(newText);
     preserved.forEach(el => bodyEl.appendChild(el));
-
-    bodyEl.dispatchEvent(new InputEvent('input', { bubbles: true }));
-    bodyEl.dispatchEvent(new Event('change', { bubbles: true }));
+    dispatchComposeUpdate(bodyEl);
   }
 
-  // ── Floating Panel ──────────────────────────────────────
-  let popup = null;
-  let minimizeBtn = null;
-  let currentCompose = null;
-  let originalHTML = '';
+  function setInputValue(inputEl, value) {
+    inputEl.value = value;
+    inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+    inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+  }
 
   function getLang() {
     return new Promise(resolve => {
@@ -74,15 +96,37 @@
     });
   }
 
-  setInterval(() => {
-    if (currentCompose && !document.body.contains(currentCompose)) {
-      currentCompose = null;
-      if (popup) popup.style.display = 'none';
-      if (minimizeBtn) minimizeBtn.style.display = 'none';
-    }
-  }, 2000);
-
+  // ── Floating Panel ──────────────────────────────────────
+  let popup = null;
+  let minimizeBtn = null;
+  let currentCompose = null;
   let popupPromise = null;
+  let activeBackupSnapshot = null;
+
+  function clearMsg(msgArea) {
+    msgArea.innerHTML = '';
+    msgArea.style.maxHeight = '0';
+    msgArea.style.padding = '0 14px';
+  }
+
+  function clearBackup(backupArea) {
+    backupArea.innerHTML = '';
+    backupArea.style.maxHeight = '0';
+    backupArea.style.padding = '0 14px';
+  }
+
+  function dispatchRestoreSnapshot(snapshot, showMsg, t, backupArea) {
+    const { bodyEl, html } = snapshot || {};
+    if (!bodyEl || !bodyEl.isConnected) {
+      showMsg(t('msg_error_restore_lost'), 'error');
+      return;
+    }
+    bodyEl.innerHTML = html;
+    dispatchComposeUpdate(bodyEl);
+    showMsg(t('msg_restore_done'), 'success');
+    clearBackup(backupArea);
+  }
+
   function createPopup() {
     if (popup) return Promise.resolve();
     if (popupPromise) return popupPromise;
@@ -90,66 +134,77 @@
     popupPromise = (async () => {
       try {
         const lang = await getLang();
+        const I18N = getI18n(); // 取得最新的 i18n 工具 
         const t = (key) => I18N.getMessage(key, lang);
 
-        // Main Panel
         popup = document.createElement('div');
         popup.id = 'mailpilot-popup';
-        const w = 310;
-        const h = 220;
-        const initialLeft = Math.max(20, window.innerWidth - w - 20);
-        const initialTop = Math.max(20, window.innerHeight - h - 20);
+
+        const w = 320;
+        const initialLeft = Math.max(20, window.innerWidth - w - 40);
+        const initialTop = 100;
 
         Object.assign(popup.style, {
-          position: 'fixed', width: `${w}px`, left: `${initialLeft}px`, top: `${initialTop}px`,
-          backgroundColor: '#fff', border: '1px solid #dadce0', borderRadius: '12px',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.12)', zIndex: '999999',
-          fontFamily: 'Google Sans, system-ui, sans-serif', fontSize: '13px',
-          display: 'flex', flexDirection: 'column', overflow: 'auto',
-          resize: 'both', minWidth: '240px', minHeight: '150px'
+          position: 'fixed',
+          width: `${w}px`,
+          left: `${initialLeft}px`,
+          top: `${initialTop}px`,
+          backgroundColor: '#fff',
+          border: '1px solid #dadce0',
+          borderRadius: '14px',
+          boxShadow: '0 8px 28px rgba(0,0,0,0.16)',
+          zIndex: '999999',
+          fontFamily: 'Google Sans, system-ui, sans-serif',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden'
         });
-
-        popup.style.setProperty('resize', 'both', 'important');
-        popup.style.setProperty('overflow', 'auto', 'important');
-        popup.style.setProperty('position', 'fixed', 'important');
-        popup.style.setProperty('display', 'flex', 'important');
 
         // Header
         const header = document.createElement('div');
         Object.assign(header.style, {
-          padding: '10px 12px', backgroundColor: '#f8f9fa',
-          borderBottom: '1px solid #e8eaed', cursor: 'grab',
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          padding: '10px 12px',
+          backgroundColor: '#f8f9fa',
+          borderBottom: '1px solid #e8eaed',
+          cursor: 'grab',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
           userSelect: 'none'
         });
 
-        const titleSpan = document.createElement('span');
+        const titleWrap = document.createElement('div');
+        const titleSpan = document.createElement('div');
         titleSpan.textContent = t('ui_header');
-        Object.assign(titleSpan.style, { fontWeight: '600', color: '#202124' });
+        Object.assign(titleSpan.style, { fontWeight: '700', color: '#202124' });
+        titleWrap.append(titleSpan);
 
         const closeBtn = document.createElement('button');
         closeBtn.innerHTML = '&#8722;';
-        Object.assign(closeBtn.style, {
-          background: 'none', border: 'none', cursor: 'pointer',
-          fontSize: '18px', color: '#5f6368', lineHeight: 1, padding: '0 2px'
-        });
-        closeBtn.title = t('minimize_tooltip') || 'Minimize';
-        header.append(titleSpan, closeBtn);
+        Object.assign(closeBtn.style, { background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px' });
+        header.append(titleWrap, closeBtn);
 
         // Button Grid
         const btnGrid = document.createElement('div');
         Object.assign(btnGrid.style, {
-          padding: '12px 14px', display: 'grid', gridTemplateColumns: '1fr 1fr',
-          gap: '8px', borderBottom: '1px solid #e8eaed'
+          padding: '12px',
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: '8px'
         });
 
         const makeBtn = (label, bgColor) => {
           const btn = document.createElement('button');
           btn.textContent = label;
           Object.assign(btn.style, {
-            padding: '8px 4px', backgroundColor: bgColor, color: '#fff',
-            border: 'none', borderRadius: '6px', cursor: 'pointer',
-            fontWeight: '500', fontSize: '12px', whiteSpace: 'nowrap'
+            padding: '8px 4px',
+            backgroundColor: bgColor,
+            color: '#fff',
+            border: 'none',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            fontWeight: '600',
+            fontSize: '12px'
           });
           return btn;
         };
@@ -160,248 +215,64 @@
         const btnCheck = makeBtn(t('btn_check'), '#ea4335');
         btnGrid.append(btnOptimize, btnTranslate, btnTitle, btnCheck);
 
-        // Message Area
-        const msgArea = document.createElement('div');
-        Object.assign(msgArea.style, {
-          padding: '0 14px', maxHeight: '0', overflow: 'hidden',
-          transition: 'max-height 0.2s, padding 0.2s', fontSize: '12px',
-          borderRadius: '4px', margin: '4px 14px 0 14px'
+        // Listen for language changes dynamically
+        chrome.storage.onChanged.addListener((changes) => {
+          if (changes.uiLang) {
+            const newLang = changes.uiLang.newValue || 'en';
+            const newT = (key) => I18N.getMessage(key, newLang);
+            titleSpan.textContent = newT('ui_header');
+            btnOptimize.textContent = newT('btn_optimize');
+            btnTranslate.textContent = newT('btn_translate');
+            btnTitle.textContent = newT('btn_title');
+            btnCheck.textContent = newT('btn_check');
+          }
         });
 
-        // Backup Area
+        const msgArea = document.createElement('div');
         const backupArea = document.createElement('div');
-        Object.assign(backupArea.style, {
-          padding: '0 14px', maxHeight: '0', overflow: 'hidden',
-          transition: 'max-height 0.2s, padding 0.2s'
-        });
+        Object.assign(msgArea.style, { overflow: 'hidden', transition: 'max-height 0.2s', fontSize: '12px' });
 
         popup.append(header, btnGrid, msgArea, backupArea);
         document.body.appendChild(popup);
 
-        // Minimize Button
-        minimizeBtn = document.createElement('button');
-        minimizeBtn.innerHTML = '✉️';
-        Object.assign(minimizeBtn.style, {
-          position: 'fixed', bottom: '20px', right: '20px',
-          width: '44px', height: '44px', borderRadius: '22px',
-          backgroundColor: '#1a73e8', color: '#fff', border: 'none',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.2)', cursor: 'pointer',
-          fontSize: '18px', display: 'none', zIndex: '999998',
-          alignItems: 'center', justifyContent: 'center'
-        });
-        document.body.appendChild(minimizeBtn);
-
-        const minimize = () => {
-          popup.style.display = 'none';
-          minimizeBtn.style.display = 'flex';
-        };
-
-        const restore = () => {
-          popup.style.display = 'flex';
-          minimizeBtn.style.display = 'none';
-        };
-
-        closeBtn.addEventListener('click', minimize);
-        minimizeBtn.addEventListener('click', restore);
-
-        // Drag Functionality
-        let isDragging = false, startX, startY, popupLeft, popupTop;
-        header.addEventListener('pointerdown', (e) => {
-          if (e.target === closeBtn) return;
-          isDragging = true;
-          header.style.cursor = 'grabbing';
-          startX = e.clientX;
-          startY = e.clientY;
-          const rect = popup.getBoundingClientRect();
-          popupLeft = rect.left;
-          popupTop = rect.top;
-          header.setPointerCapture(e.pointerId);
-          e.preventDefault();
-          e.stopPropagation();
-        });
-
-        header.addEventListener('pointermove', (e) => {
-          if (!isDragging) return;
-          popup.style.setProperty('left', `${popupLeft + e.clientX - startX}px`, 'important');
-          popup.style.setProperty('top', `${popupTop + e.clientY - startY}px`, 'important');
-          popup.style.setProperty('bottom', 'auto', 'important');
-          popup.style.setProperty('right', 'auto', 'important');
-          e.preventDefault();
-          e.stopPropagation();
-        });
-
-        header.addEventListener('pointerup', (e) => {
-          if (isDragging) {
-            isDragging = false;
-            header.style.cursor = 'grab';
-            header.releasePointerCapture(e.pointerId);
-            e.stopPropagation();
-          }
-        });
-
-        // UI Helpers
-        function showMsg(html, type = 'info') {
-          msgArea.innerHTML = html;
-          msgArea.style.maxHeight = '2000px';
-          msgArea.style.padding = '10px 14px';
-
-          if (type === 'error') {
-            msgArea.style.backgroundColor = '#fce8e6';
-            msgArea.style.color = '#d93025';
-          } else if (type === 'success') {
-            msgArea.style.backgroundColor = '#e6f4ea';
-            msgArea.style.color = '#137333';
-          } else {
-            msgArea.style.backgroundColor = '#e8f0fe';
-            msgArea.style.color = '#202124';
-          }
-        }
-
-        function clearMsg() {
-          msgArea.style.maxHeight = '0';
-          msgArea.style.padding = '0 14px';
-        }
-
-        function showBackup(text) {
-          backupArea.innerHTML = `<details style="font-size:12px;">
-            <summary style="cursor:pointer; margin-top: 8px;">${t('backup_title')}</summary>
-            <div style="max-height:80px;overflow-y:auto;background:#f8f9fa;padding:6px;border-radius:6px;white-space:pre-wrap;">${escapeHtml(text)}</div>
-            <button class="restore-btn" style="margin-top:6px;padding:4px 10px;background:#fff;border:1px solid #dadce0;border-radius:6px;cursor:pointer;">${t('backup_restore')}</button>
-          </details>`;
-
-          backupArea.querySelector('.restore-btn').addEventListener('click', () => {
-            if (currentCompose) {
-              const body = getComposeBody(currentCompose);
-              if (body) {
-                body.innerHTML = originalHTML;
-                body.dispatchEvent(new InputEvent('input', { bubbles: true }));
-                body.dispatchEvent(new Event('change', { bubbles: true }));
-              }
-            }
-            backupArea.style.maxHeight = '0';
-            backupArea.style.padding = '0 14px';
-            clearMsg();
-          });
-        }
-
-        // Button State Management
-        const allBtns = [btnOptimize, btnTranslate, btnTitle, btnCheck];
-        function setUIProcessing(processing, activeBtn) {
-          allBtns.forEach(btn => {
-            if (btn === activeBtn) {
-              btn.disabled = processing;
-              btn.style.opacity = processing ? '0.5' : '1';
-              btn.style.cursor = processing ? 'not-allowed' : 'pointer';
-            } else {
-              btn.disabled = processing;
-              btn.style.opacity = processing ? '0.35' : '1';
-              btn.style.cursor = processing ? 'not-allowed' : 'pointer';
-            }
-          });
-        }
-
         // Action Handler
-        async function handleAction(type) {
+        const handleAction = async (type) => {
           if (!currentCompose) return;
           const body = getComposeBody(currentCompose);
-          if (!body) { showMsg(t('msg_error_no_body'), 'error'); return; }
           const text = extractText(body);
-          if (!text) { showMsg(t('msg_error_empty'), 'error'); return; }
+          if (!text) return;
 
-          originalHTML = body.innerHTML;
-          clearMsg();
-          backupArea.style.maxHeight = '0';
-          backupArea.style.padding = '0 14px';
+          const backupSnapshot = { bodyEl: body, html: body.innerHTML, text };
+          const settings = await chrome.storage.local.get(['optimizePrompt', 'titlePrompt', 'checkPrompt', 'translateLang']);
 
-          const origLabels = {
-            optimize: btnOptimize.textContent,
-            translate: btnTranslate.textContent,
-            title: btnTitle.textContent,
-            check: btnCheck.textContent
-          };
+          let prompt = '';
+          if (type === 'optimize') prompt = settings.optimizePrompt || I18N.getDefaultPrompts(lang).optimize;
+          else if (type === 'title') prompt = settings.titlePrompt || I18N.getDefaultPrompts(lang).title;
+          else if (type === 'translate') prompt = `Translate to ${settings.translateLang || 'English'}`;
 
-          const statusKeys = {
-            optimize: 'status_processing',
-            translate: 'status_translating',
-            title: 'status_generating',
-            check: 'status_checking'
-          };
-
-          const activeBtnMap = {
-            optimize: btnOptimize,
-            translate: btnTranslate,
-            title: btnTitle,
-            check: btnCheck
-          };
-
-          const activeBtn = activeBtnMap[type];
-          activeBtn.textContent = t(statusKeys[type]);
-          setUIProcessing(true, activeBtn);
-
-          try {
-            const settings = await chrome.storage.local.get([
-              'optimizePrompt', 'titlePrompt', 'checkPrompt', 'translateLang', 'uiLang'
-            ]);
-
-            let prompt = '';
-            if (type === 'optimize') prompt = settings.optimizePrompt || I18N.getDefaultPrompts(settings.uiLang).optimize;
-            else if (type === 'title') prompt = settings.titlePrompt || I18N.getDefaultPrompts(settings.uiLang).title;
-            else if (type === 'check') prompt = settings.checkPrompt || '';
-            else if (type === 'translate') prompt = `Translate the following text to ${settings.translateLang || 'English'}.\nOnly return the translation without any explanations or quotes.`;
-
-            if (type === 'check' && !prompt.trim()) {
-              showMsg(t('msg_error_no_check_prompt'), 'error');
-              return;
-            }
-
-            const result = await callGeminiAPI(prompt, text);
-
-            if (result.success) {
+          chrome.runtime.sendMessage({ action: 'CALL_GEMINI_API', prompt, content: text }, response => {
+            if (response.success) {
+              const output = removeCommonModelDecorations(response.data);
               if (type === 'title') {
                 const subjectInput = currentCompose.querySelector(SUBJECT_SELECTORS);
-                if (subjectInput) {
-                  subjectInput.value = result.data.replace(/^["「『]|["」』]$/g, '');
-                  subjectInput.dispatchEvent(new Event('input', { bubbles: true }));
-                  subjectInput.dispatchEvent(new Event('change', { bubbles: true }));
-                  showMsg(`✓ ${t('msg_success_title')} ${subjectInput.value}`, 'success');
-                } else {
-                  showMsg(`⚠ Cannot find subject field.`, 'error');
-                }
-              } else if (type === 'check') {
-                showMsg(`<strong>${t('title_check_result')}</strong><br><pre style="white-space:pre-wrap;margin:8px 0 0;">${escapeHtml(result.data)}</pre>`, 'info');
+                if (subjectInput) setInputValue(subjectInput, normalizeTitle(output));
               } else {
-                replaceTextSafely(body, result.data);
-                showMsg(`✓ ${t(type === 'optimize' ? 'msg_success_opt' : 'msg_success_trans')}`, 'success');
-                showBackup(text);
-                backupArea.style.maxHeight = '2000px';
-                backupArea.style.padding = '10px 14px';
+                replaceTextSafely(body, output);
+                activeBackupSnapshot = backupSnapshot;
               }
-            } else {
-              showMsg(`⚠ ${t('msg_error_api')}${result.error}`, 'error');
             }
-          } catch (err) {
-            showMsg(`⚠ ${t('msg_error_generic')}${err.message}`, 'error');
-          } finally {
-            activeBtn.textContent = origLabels[type];
-            setUIProcessing(false, activeBtn);
-          }
-        }
-
-        function callGeminiAPI(prompt, content) {
-          return new Promise(resolve => {
-            chrome.runtime.sendMessage(
-              { action: 'CALL_GEMINI_API', prompt, content },
-              response => resolve(response || { success: false, error: 'No response' })
-            );
           });
-        }
+        };
 
-        // Bind Button Events
         btnOptimize.addEventListener('click', () => handleAction('optimize'));
         btnTranslate.addEventListener('click', () => handleAction('translate'));
         btnTitle.addEventListener('click', () => handleAction('title'));
         btnCheck.addEventListener('click', () => handleAction('check'));
 
+        closeBtn.addEventListener('click', () => { popup.style.display = 'none'; });
+
+      } catch (err) {
+        console.error('[MailPilot] Popup creation failed:', err);
       } finally {
         popupPromise = null;
       }
@@ -409,28 +280,25 @@
     return popupPromise;
   }
 
-  // ── Scanner: Detect new compose windows ──────────────────
+  function normalizeTitle(text) {
+    return removeCommonModelDecorations(text).replace(/\s+/g, ' ').trim();
+  }
+
   function scanComposeWindows() {
     const candidates = document.querySelectorAll(COMPOSE_SELECTORS);
     candidates.forEach(win => {
       if (win.hasAttribute(DATA_INJECTED)) return;
-      if (!win.querySelector(BODY_SELECTOR)) return;
+      const body = win.querySelector(BODY_SELECTOR);
+      if (!body) return;
 
       win.setAttribute(DATA_INJECTED, '1');
       currentCompose = win;
       createPopup().then(() => {
         if (popup) popup.style.display = 'flex';
-        if (minimizeBtn) minimizeBtn.style.display = 'none';
       });
     });
   }
 
-  window.MailPilot = window.MailPilot || {};
-  window.MailPilot.scanComposeState = scanComposeWindows;
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', scanComposeWindows);
-  } else {
-    scanComposeWindows();
-  }
+  window.MailPilot = { scanComposeState: scanComposeWindows };
+  setInterval(scanComposeWindows, 1500);
 })();

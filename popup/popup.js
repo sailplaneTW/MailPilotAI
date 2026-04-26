@@ -27,12 +27,12 @@ document.addEventListener('DOMContentLoaded', () => {
       modelStatus.className = 'status-missing';
     }
   });
-});
 
-document.getElementById('settingsBtn').addEventListener('click', () => {
-  if (chrome.runtime.openOptionsPage) {
-    chrome.runtime.openOptionsPage();
-  } else {
-    window.open(chrome.runtime.getURL('options/options.html'));
-  }
+  document.getElementById('settingsBtn').addEventListener('click', () => {
+    if (chrome.runtime.openOptionsPage) {
+      chrome.runtime.openOptionsPage();
+    } else {
+      window.open(chrome.runtime.getURL('options/options.html'));
+    }
+  });
 });

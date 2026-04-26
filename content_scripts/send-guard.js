@@ -22,70 +22,79 @@
   });
 
   const buttonStates = new WeakMap();
+  let armedButton = null;
 
   function restoreButton(btn) {
     const state = buttonStates.get(btn);
     if (!state) return;
+
     clearTimeout(state.timer);
     btn.textContent = state.originalText;
     btn.style.backgroundColor = state.originalBg;
     btn.style.color = state.originalColor;
+    btn.style.outline = state.originalOutline;
+    btn.style.boxShadow = state.originalBoxShadow;
+    btn.title = state.originalTitle;
     buttonStates.delete(btn);
+
+    if (armedButton === btn) {
+      armedButton = null;
+    }
   }
 
-  const activeConfirmedButtons = new Set();
+  function armButton(btn) {
+    const originalText = btn.textContent || '';
+    const originalBg = btn.style.backgroundColor;
+    const originalColor = btn.style.color;
+    const originalOutline = btn.style.outline;
+    const originalBoxShadow = btn.style.boxShadow;
+    const originalTitle = btn.title;
+
+    btn.textContent = I18N.getMessage('guard_warning', uiLang);
+    btn.style.backgroundColor = '#d93025';
+    btn.style.color = '#fff';
+    btn.style.outline = '2px solid rgba(217, 48, 37, 0.18)';
+    btn.style.boxShadow = '0 2px 8px rgba(217, 48, 37, 0.25)';
+    btn.title = I18N.getMessage('guard_warning', uiLang);
+
+    const timer = setTimeout(() => restoreButton(btn), 5000);
+
+    buttonStates.set(btn, {
+      originalText,
+      originalBg,
+      originalColor,
+      originalOutline,
+      originalBoxShadow,
+      originalTitle,
+      timer
+    });
+
+    armedButton = btn;
+  }
 
   document.addEventListener('click', (e) => {
     if (!enabled) return;
+
     const target = e.target;
     if (!(target instanceof Element)) return;
 
     const sendBtn = target.closest(SEND_BUTTON_SELECTOR);
-    if (!sendBtn) return;
-    if (!sendBtn.isConnected) return;
 
-    const state = buttonStates.get(sendBtn);
-    if (state && state.confirmed) {
-      // Second click: restore before letting it pass
+    if (armedButton && sendBtn !== armedButton) {
+      restoreButton(armedButton);
+    }
+
+    if (!sendBtn || !sendBtn.isConnected) return;
+
+    if (sendBtn === armedButton) {
       restoreButton(sendBtn);
-      activeConfirmedButtons.delete(sendBtn);
-      document.removeEventListener('click', cancelExternalClick, true);
       return;
     }
 
-    // First click: intercept
     e.preventDefault();
     e.stopPropagation();
     e.stopImmediatePropagation();
 
-    const originalText = sendBtn.textContent;
-    const originalBg = sendBtn.style.backgroundColor;
-    const originalColor = sendBtn.style.color;
-
-    sendBtn.textContent = I18N.getMessage('guard_warning', uiLang);
-    sendBtn.style.backgroundColor = '#d93025';
-    sendBtn.style.color = '#fff';
-
-    const timer = setTimeout(() => {
-      restoreButton(sendBtn);
-      activeConfirmedButtons.delete(sendBtn);
-      document.removeEventListener('click', cancelExternalClick, true);
-    }, 5000);
-
-    buttonStates.set(sendBtn, {
-      confirmed: true,
-      originalText, originalBg, originalColor, timer
-    });
-    activeConfirmedButtons.add(sendBtn);
-
-    // Cancel on external click
-    const cancelExternalClick = (ev) => {
-      if (!sendBtn.contains(ev.target)) {
-        restoreButton(sendBtn);
-        activeConfirmedButtons.delete(sendBtn);
-        document.removeEventListener('click', cancelExternalClick, true);
-      }
-    };
-    document.addEventListener('click', cancelExternalClick, true);
+    armButton(sendBtn);
   }, true);
 })();
