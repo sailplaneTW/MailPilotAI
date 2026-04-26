@@ -69,3 +69,6 @@ yarn-error.log
 # Yarn Integrity file
 .yarn-integrity
 .vercel
+
+export_code.js
+mailrefine_code_bundle.txt
