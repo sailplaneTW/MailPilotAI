@@ -29,6 +29,7 @@
       padding: 8px;
       border: 1px solid #ccc;
       border-radius: 4px;
+      box-sizing: border-box;
     }
 
     button {
@@ -42,6 +43,11 @@
 
     button:hover {
       background: #0842a0;
+    }
+    
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
     }
   </style>
 </head>
@@ -66,15 +72,29 @@
   </div>
 
   <div class="form-group">
-    <label for="systemPrompt">System Prompt (Rewrite Rules)</label>
-    <textarea id="systemPrompt"
-      rows="4">You are a professional email assistant. Please rewrite the following email to be clear, polite, and professional.</textarea>
+    <label for="optimizePrompt">優化內文 Prompt</label>
+    <textarea id="optimizePrompt" rows="3">請以商業 email 的慣例邏輯，替我改寫內文。不用過度客氣但請要有禮貌，也刪除不必要的冗字</textarea>
+  </div>
+
+  <div class="form-group">
+    <label for="translateLang">翻譯目標語言</label>
+    <input type="text" id="translateLang" placeholder="例如：英文、日文">
+  </div>
+
+  <div class="form-group">
+    <label for="titlePrompt">優化標題 Prompt</label>
+    <textarea id="titlePrompt" rows="2">請根據內文的內容及語系替我產生信件標題</textarea>
+  </div>
+
+  <div class="form-group">
+    <label for="checkPrompt">信件檢查 Prompt (選填)</label>
+    <textarea id="checkPrompt" rows="2" placeholder="請檢查有沒有錯字或是語氣不順的地方"></textarea>
   </div>
 
   <div class="form-group">
     <label>
       <input type="checkbox" id="enableDoubleConfirm" checked>
-      Enable Double-Click Send Confirmation
+      Enable Double-Click Send Confirmation (寄信防呆)
     </label>
   </div>
 
