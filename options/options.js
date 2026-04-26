@@ -21,11 +21,35 @@ document.getElementById('apiKey').addEventListener('input', (e) => {
 
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
-        if (apiKey.length > 20) { // Avoid spamming API on very short inputs
+        if (apiKey.length > 20) {
             fetchAndPopulateModels(false);
         }
     }, 800);
 });
+
+function isCloudLanguageModel(model) {
+    const id = model.name.toLowerCase();
+
+    // 必須支援 generateContent
+    if (!model.supportedGenerationMethods.includes('generateContent')) return false;
+
+    // 排除地端模型（Gemma 系列）
+    if (id.includes('gemma')) return false;
+
+    // 排除 TTS（語音合成）模型
+    if (id.includes('tts')) return false;
+
+    // 排除圖像生成 / 視覺模型
+    if (id.includes('image') || id.includes('vision') || id.includes('imagen')) return false;
+
+    // 排除嵌入向量模型
+    if (id.includes('embed') || id.includes('embedding')) return false;
+
+    // 排除 AQA 問答檢索模型
+    if (id.includes('aqa')) return false;
+
+    return true;
+}
 
 async function getGeminiLLMModels(apiKey, showAlert = false) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
@@ -35,9 +59,7 @@ async function getGeminiLLMModels(apiKey, showAlert = false) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         const data = await response.json();
-        return data.models.filter(model =>
-            model.supportedGenerationMethods.includes('generateContent')
-        );
+        return data.models.filter(isCloudLanguageModel);
     } catch (error) {
         console.error("無法取得模型清單:", error);
         if (showAlert) alert("無法取得模型清單: " + error.message);
