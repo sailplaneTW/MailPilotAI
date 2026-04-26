@@ -55,9 +55,15 @@
 
 ## 📸 介面預覽
 
-*(在此加入您的螢幕截圖，讓使用者感到驚艷！)*
-- **設定頁面**：具備實時語系同步功能的專業介面佈局。
-- **撰寫面板**：無縫整合至 Gmail UI 的精美懸浮面板。
+<p align="center">
+  <img src="screenshots/1.png" width="80%" alt="MailPilot AI 撰寫面板">
+  <br><em>無縫整合至 Gmail UI 的精美懸浮面板</em>
+</p>
+
+<p align="center">
+  <img src="screenshots/2.png" width="80%" alt="MailPilot AI 設定頁面">
+  <br><em>具備實時語系同步功能的專業設定頁面</em>
+</p>
 
 ---
 

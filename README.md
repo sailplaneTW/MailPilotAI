@@ -55,9 +55,15 @@
 
 ## 📸 Interface Preview
 
-*(Add your screenshots here to wow your users!)*
-- **Options Page**: Professional shell layout with real-time language syncing.
-- **Compose Panel**: Sleek floating panel integrated into Gmail's UI.
+<p align="center">
+  <img src="screenshots/1.png" width="80%" alt="MailPilot AI Compose Panel">
+  <br><em>Sleek floating panel integrated into Gmail's UI</em>
+</p>
+
+<p align="center">
+  <img src="screenshots/2.png" width="80%" alt="MailPilot AI Settings">
+  <br><em>Professional options page with real-time sync</em>
+</p>
 
 ---
 

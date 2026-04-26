@@ -26,21 +26,24 @@
 
     if (items.apiKey) {
       keyVal.textContent = I18N.getMessage('popup_status_set', lang);
-      keyVal.className = 'status-val status-ok';
+      keyVal.className = 'status-val';
       modelVal.textContent = items.model || 'gemini-1.5-flash';
-      tip.style.display = 'none';
+      if (tip) tip.style.display = 'none';
     } else {
       keyVal.textContent = I18N.getMessage('popup_status_missing', lang);
-      keyVal.className = 'status-val status-missing';
+      keyVal.className = 'status-missing';
       modelVal.textContent = '-';
-      tip.style.display = 'block';
+      if (tip) tip.style.display = 'block';
     }
   }
 
   // Open settings page
-  document.getElementById('openSettings').addEventListener('click', () => {
-    chrome.runtime.openOptionsPage();
-  });
+  const settingsBtn = document.getElementById('settingsBtn');
+  if (settingsBtn) {
+    settingsBtn.addEventListener('click', () => {
+      chrome.runtime.openOptionsPage();
+    });
+  }
 
   // Initialize
   document.addEventListener('DOMContentLoaded', updateStatus);
