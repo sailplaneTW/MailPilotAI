@@ -63,7 +63,7 @@
       minimize_tooltip: "Minimize",
 
       prompt_default_opt: "Please rewrite the following content according to business email communication conventions. The tone should be professional, polite, and logically clear. Please remove unnecessary words and overly polite rhetoric, and get straight to the point. When submitting your email, only provide the rewritten body text (excluding the title) so I can use it directly. Please keep the word count under 1500 words.",
-      prompt_default_title: "Please generate an email subject based on the content and language of the email body."
+      prompt_default_title: "Please generate an email subject based on the content and language of the email body. The tone should be professional, polite, and concise. Please remove unnecessary words and overly polite rhetoric, and get straight to the point. When submitting your email, only provide the rewritten subject text, so I can use it directly."
     },
     zh_TW: {
       opt_title: "MailPilot 設定",
@@ -127,7 +127,7 @@
       minimize_tooltip: "最小化",
 
       prompt_default_opt: "請依據商務 Email 溝通慣例改寫以下內容。語氣需專業禮貌且邏輯清晰，請刪除不必要的贅字與過度客套的修辭，直接切入重點。輸出時僅需提供改寫後的內文（不含標題），以便我直接貼上使用。字數請在 1500 字內。",
-      prompt_default_title: "請根據內文的內容及語系替我產生信件標題"
+      prompt_default_title: "請根據內文的內容及語系替我產生信件標題。語氣需專業禮貌且邏輯清晰，請刪除不必要的贅字與過度客套的修辭，直接切入重點。輸出時僅需提供改寫後的標題，以便我直接貼上使用"
     },
     zh_CN: {
       opt_title: "MailPilot 设置",
@@ -191,7 +191,7 @@
       minimize_tooltip: "最小化",
 
       prompt_default_opt: "请依据商务 Email 沟通惯例改写以下内容。语气需专业礼貌且逻辑清晰，请删除不必要的赘字与过度客套的修辞，直接切入重点。输出时仅需提供改写后的正文（不含标题），以便我直接贴上使用。字数请在 1500 字内。",
-      prompt_default_title: "请根据正文的内容及语系替我产生邮件标题"
+      prompt_default_title: "请根据正文的内容及语系替我产生邮件标题。语气需专业礼貌且逻辑清晰，请删除不必要的赘字与过度客套的修辞，直接切入重点。输出时仅需提供改写后的标题，以便我直接贴上使用"
     }
   };
 

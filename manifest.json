@@ -4,8 +4,7 @@
   "version": "1.0.0",
   "description": "AI-powered Gmail compose assistant with optimization, translation, and safety guard.",
   "permissions": [
-    "storage",
-    "scripting"
+    "storage"
   ],
   "host_permissions": [
     "https://mail.google.com/*",
