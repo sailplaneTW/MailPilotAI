@@ -8,6 +8,11 @@
 
 **MailPilot AI** is a premium Chrome Extension that transforms your Gmail experience with the power of Google's Gemini AI. It's not just another AI tool; it's a seamless companion that lives directly within your Gmail compose window to help you write better, faster, and more safely.
 
+<p align="center">
+  <a href="https://www.sam-huang.info/j/MailPilotChromeExtension">🧩 Chrome Extension</a> ·
+  <a href="https://www.sam-huang.info/en/MailPilot-gmail-writing-helper">🌐 Website</a>
+</p>
+
 ---
 
 ## ✨ Key Features

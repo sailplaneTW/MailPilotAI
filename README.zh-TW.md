@@ -8,6 +8,11 @@
 
 **MailPilot AI** 是一款頂級的 Chrome 擴充功能，利用 Google Gemini AI 的強大功能徹底改變您的 Gmail 體驗。它不僅僅是另一個 AI 工具；它是一個無縫整合的寫作助手，直接鑲嵌在您的 Gmail 撰寫視窗中，幫助您寫得更好、更快且更安全。
 
+<p align="center">
+  <a href="https://www.sam-huang.info/j/MailPilotChromeExtension">🧩 Chrome 擴充功能</a> ·
+  <a href="https://www.sam-huang.info/MailPilot-gmail-writing-helper">🌐 官方網站</a>
+</p>
+
 ---
 
 ## ✨ 核心功能
