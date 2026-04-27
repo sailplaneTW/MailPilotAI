@@ -312,7 +312,8 @@
 
       allBtns.forEach(b => b.disabled = true);
       activeBtn.textContent = instanceT(statusKey);
-      clearUI();
+      // Also show the task status in the message area
+      showMessage(instanceT(statusKey), 'info');
 
       const settings = await storageGet(['optimizePrompt', 'titlePrompt', 'checkPrompt', 'translateLang']);
       let prompt = '';

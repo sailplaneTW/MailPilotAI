@@ -16,6 +16,7 @@
     checkPrompt: document.getElementById('checkPrompt'),
     translateLang: document.getElementById('translateLang'),
     enableDoubleConfirm: document.getElementById('enableDoubleConfirm'),
+    enableAutoCheck: document.getElementById('enableAutoCheck'),
     status: document.getElementById('status'),
     saveBtn: document.getElementById('saveBtn'),
     fetchModelsBtn: document.getElementById('fetchModelsBtn'),
@@ -105,7 +106,8 @@
       titlePrompt: el.titlePrompt.value,
       checkPrompt: el.checkPrompt.value,
       translateLang: el.translateLang.value,
-      enableDoubleConfirm: el.enableDoubleConfirm.checked
+      enableDoubleConfirm: el.enableDoubleConfirm.checked,
+      enableAutoCheck: el.enableAutoCheck.checked
     };
 
     await storageSet(data);
@@ -118,8 +120,8 @@
    */
   async function loadSettings() {
     const items = await storageGet([
-      'uiLang', 'apiKey', 'model', 'optimizePrompt', 
-      'titlePrompt', 'checkPrompt', 'translateLang', 'enableDoubleConfirm'
+      'uiLang', 'apiKey', 'model', 'optimizePrompt',
+      'titlePrompt', 'checkPrompt', 'translateLang', 'enableDoubleConfirm', 'enableAutoCheck'
     ]);
 
     const lang = items.uiLang || 'en';
@@ -131,7 +133,6 @@
     if (items.apiKey) {
       el.model.disabled = false;
       el.fetchModelsBtn.disabled = false;
-      // Add existing model if it's not in the default list
       if (items.model) {
         const opt = document.createElement('option');
         opt.value = items.model;
@@ -145,8 +146,8 @@
     el.translateLang.value = items.translateLang || 'English';
     el.checkPrompt.value = items.checkPrompt || '';
     el.enableDoubleConfirm.checked = items.enableDoubleConfirm !== false;
+    el.enableAutoCheck.checked = !!items.enableAutoCheck;
 
-    // Load prompts with auto-sync logic
     const defaults = I18N.getDefaultPrompts(lang);
     el.optimizePrompt.value = items.optimizePrompt || defaults.optimize;
     el.titlePrompt.value = items.titlePrompt || defaults.title;
@@ -180,6 +181,13 @@
   el.apiKey.addEventListener('blur', refreshModels);
   el.fetchModelsBtn.addEventListener('click', refreshModels);
   el.saveBtn.addEventListener('click', saveSettings);
+
+  // Auto-check implies double-confirm must be on
+  el.enableAutoCheck.addEventListener('change', () => {
+    if (el.enableAutoCheck.checked) {
+      el.enableDoubleConfirm.checked = true;
+    }
+  });
 
   // Initialize
   document.addEventListener('DOMContentLoaded', loadSettings);

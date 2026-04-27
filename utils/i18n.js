@@ -59,6 +59,10 @@
       backup_title: "Original Backup",
       backup_restore: "↩ Restore",
       guard_warning: "⚠️ Confirm Send?",
+      guard_checking: "⏳ Checking email, please wait...",
+
+      opt_auto_check: "Auto Email Check Before Send",
+      opt_auto_check_hint: "Requires 'Check Email Prompt' to be filled in. Automatically enables Send Guard.",
 
       minimize_tooltip: "Minimize",
 
@@ -123,6 +127,10 @@
       backup_title: "原始備份",
       backup_restore: "↩ 還原",
       guard_warning: "⚠️ 確認寄出？",
+      guard_checking: "⏳ 信件檢查中，請稍候...",
+
+      opt_auto_check: "寄信前自動信件檢查",
+      opt_auto_check_hint: "需先填寫「信件檢查提示詞」才會生效。開啟後將自動啟用寄信防呆。",
 
       minimize_tooltip: "最小化",
 
@@ -187,6 +195,10 @@
       backup_title: "原始备份",
       backup_restore: "↩ 还原",
       guard_warning: "⚠️ 确认发送？",
+      guard_checking: "⏳ 信件检查中，请稍候...",
+
+      opt_auto_check: "发信前自动邮件检查",
+      opt_auto_check_hint: "需先填写「邮件检查提示词」才会生效。开启后将自动启用发信防呆。",
 
       minimize_tooltip: "最小化",
 
