@@ -18,10 +18,9 @@
   const ATTR_INJECTED = 'data-mailpilot-injected';
 
   // --- Global State ---
-  // Map<ComposeWindowElement, PopupInstance>
   const windowPopupMap = new Map();
   let uiLang = 'en';
-  let windowCounter = 0; // Monotonically increasing, never reused
+  let windowCounter = 0;
 
   const getI18n = () => window.i18n || {
     getMessage: (k) => k,
@@ -35,7 +34,6 @@
   chrome.storage.onChanged.addListener((changes) => {
     if (!changes.uiLang) return;
     uiLang = changes.uiLang.newValue || 'en';
-    // Update all open popups
     windowPopupMap.forEach(({ updateLanguage }) => updateLanguage(uiLang));
   });
 
@@ -71,16 +69,11 @@
   }
 
   // --- Minimize Bubble Management ---
-  // Minimized bubbles appear in the bottom-right corner, stacked right-to-left.
   const BUBBLE_WIDTH = 50;
   const BUBBLE_GAP = 8;
   const BUBBLE_BOTTOM = 20;
   const BUBBLE_RIGHT_BASE = 20;
 
-  /**
-   * Recalculate bottom-right positions for all minimized bubbles.
-   * Called whenever a popup is minimized or restored.
-   */
   function repositionBubbles() {
     let slot = 0;
     windowPopupMap.forEach(({ bubble, minimized }) => {
@@ -94,12 +87,6 @@
 
   // --- Popup Factory ---
 
-  /**
-   * Creates a fully self-contained popup for one compose window.
-   * @param {Element} composeWin - The Gmail compose window element.
-   * @param {number} index - Display number (1-based).
-   * @returns {Object} - Instance with updateLanguage(), destroy() methods.
-   */
   function createPopupForWindow(composeWin, index) {
     let activeBackup = null;
     let currentLang = uiLang;
@@ -108,10 +95,12 @@
     const instanceT = (key) => I18N.getMessage(key, currentLang);
     const titleText = () => `${instanceT('ui_header')} ${index}`;
 
-    // --- Build the full popup ---
+    // --- 1. 最外層 Popup (嚴格限制寬高與隱藏溢出) ---
     const popup = createElement('div', {}, {
       position: 'fixed',
       width: '320px',
+      minWidth: '280px',
+      maxWidth: '90vw',
       left: `${Math.max(20, window.innerWidth - 360 - (index - 1) * 30)}px`,
       top: `${80 + (index - 1) * 30}px`,
       backgroundColor: '#fff',
@@ -122,45 +111,66 @@
       fontFamily: 'Google Sans, system-ui, sans-serif',
       display: 'flex',
       flexDirection: 'column',
-      minWidth: '280px',
-      minHeight: '150px',
+      height: 'auto',
+      maxHeight: '85vh',
       resize: 'both',
-      overflow: 'auto'
+      overflow: 'hidden', // 絕對隱藏任何跑出去的內容
+      boxSizing: 'border-box'
     });
 
-    // --- Message Area ---
+    // --- 2. 獨立的捲動容器 (負責產生 Scrollbar) ---
+    const msgContainer = createElement('div', {}, {
+      display: 'none',
+      flex: '1 1 auto',     // 填滿剩餘高度，可縮小
+      minHeight: '0',       // 讓 Flexbox 允許高度縮小以觸發 Scroll
+      width: '100%',
+      overflowY: 'auto',
+      overflowX: 'hidden',  // 防止水平捲軸
+      borderTop: '1px solid #e8eaed',
+      boxSizing: 'border-box'
+    });
+
+    // --- 3. 實際文字區塊 (負責強制換行與內距) ---
     const msgArea = createElement('div', {}, {
-      overflow: 'hidden',
-      transition: 'max-height 0.2s',
-      fontSize: '12px',
-      maxHeight: '0',
-      padding: '0 14px'
-    });
-    const backupArea = createElement('div', {}, {
-      overflow: 'hidden',
-      transition: 'max-height 0.2s',
-      maxHeight: '0',
-      padding: '0 14px'
+      padding: '12px 14px',
+      fontSize: '13px',
+      lineHeight: '1.5',
+      whiteSpace: 'pre-wrap',    // 保留換行，但太長會折行
+      wordBreak: 'break-word',   // 強制長單字折行
+      overflowWrap: 'anywhere',  // 終極防止單字撐破版面
+      width: '100%',
+      boxSizing: 'border-box'
     });
 
+    // 將文字區塊放入捲動容器
+    msgContainer.appendChild(msgArea);
+
+    const backupArea = createElement('div', {}, {
+      display: 'none',
+      flexShrink: '0',
+      padding: '12px 14px',
+      boxSizing: 'border-box',
+      borderTop: '1px solid #e8eaed',
+      backgroundColor: '#fff'
+    });
+
+    // 顯示訊息：控制外層容器的顯示與背景色
     const showMessage = (msg, type = 'info') => {
       msgArea.textContent = msg;
-      msgArea.style.maxHeight = '200px';
-      msgArea.style.padding = '8px 14px';
+      msgContainer.style.display = 'block';
       const styles = {
         error: { color: '#d93025', bg: '#fce8e6' },
-        success: { color: '#188038', bg: '#e6f4ea' },
+        success: { color: '#188038', bg: '#e6f4ea' }, // 綠色樣式
         info: { color: '#5f6368', bg: '#f1f3f4' }
       };
       const s = styles[type] || styles.info;
+      msgContainer.style.backgroundColor = s.bg;
       msgArea.style.color = s.color;
-      msgArea.style.backgroundColor = s.bg;
     };
 
     const clearUI = () => {
-      msgArea.style.maxHeight = '0';
-      msgArea.style.padding = '0 14px';
-      backupArea.style.maxHeight = '0';
+      msgContainer.style.display = 'none';
+      backupArea.style.display = 'none';
       backupArea.innerHTML = '';
     };
 
@@ -197,7 +207,8 @@
       display: 'grid',
       gridTemplateColumns: '1fr 1fr',
       gap: '8px',
-      flexShrink: '0'
+      flexShrink: '0',
+      backgroundColor: '#fff'
     });
 
     const makeBtn = (label, color, type) => {
@@ -217,12 +228,14 @@
 
     const btnOptimize = makeBtn(instanceT('btn_optimize'), '#1a73e8', 'optimize');
     const btnTranslate = makeBtn(instanceT('btn_translate'), '#34a853', 'translate');
-    const btnTitle    = makeBtn(instanceT('btn_title'),    '#fbbc05', 'title');
-    const btnCheck    = makeBtn(instanceT('btn_check'),    '#ea4335', 'check');
-    const allBtns     = [btnOptimize, btnTranslate, btnTitle, btnCheck];
+    const btnTitle = makeBtn(instanceT('btn_title'), '#fbbc05', 'title');
+    const btnCheck = makeBtn(instanceT('btn_check'), '#ea4335', 'check');
+    const allBtns = [btnOptimize, btnTranslate, btnTitle, btnCheck];
 
     btnGrid.append(btnOptimize, btnTranslate, btnTitle, btnCheck);
-    popup.append(btnGrid, msgArea, backupArea);
+
+    // 依序將元件塞入 popup (確保容器被包在裡面)
+    popup.append(btnGrid, msgContainer, backupArea);
     document.body.appendChild(popup);
 
     // --- Minimize Bubble ---
@@ -246,14 +259,14 @@
       flexDirection: 'column',
       gap: '2px'
     });
+
     const bubbleLabel = createElement('div', { textContent: String(index) }, { lineHeight: '1' });
-    const bubbleIcon  = createElement('div', { textContent: '✦' }, { fontSize: '14px', lineHeight: '1' });
+    const bubbleIcon = createElement('div', { textContent: '✦' }, { fontSize: '14px', lineHeight: '1' });
     bubble.append(bubbleIcon, bubbleLabel);
     document.body.appendChild(bubble);
 
     bubble.addEventListener('click', () => restore());
 
-    // --- Minimize / Restore ---
     function minimize() {
       isMinimized = true;
       const instance = windowPopupMap.get(composeWin);
@@ -277,6 +290,7 @@
     // --- Drag ---
     let dragging = false;
     let offset = { x: 0, y: 0 };
+
     header.addEventListener('pointerdown', (e) => {
       if (e.target.closest('button')) return;
       dragging = true;
@@ -284,12 +298,17 @@
       offset = { x: e.clientX - rect.left, y: e.clientY - rect.top };
       header.setPointerCapture(e.pointerId);
       popup.style.transition = 'none';
+      e.preventDefault();
     });
+
     header.addEventListener('pointermove', (e) => {
       if (!dragging) return;
       popup.style.left = `${e.clientX - offset.x}px`;
-      popup.style.top  = `${e.clientY - offset.y}px`;
+      popup.style.top = `${e.clientY - offset.y}px`;
+      popup.style.right = 'auto';
+      popup.style.bottom = 'auto';
     });
+
     header.addEventListener('pointerup', (e) => {
       dragging = false;
       header.releasePointerCapture(e.pointerId);
@@ -305,20 +324,23 @@
 
       const origLabels = {
         optimize: btnOptimize.textContent, translate: btnTranslate.textContent,
-        title: btnTitle.textContent,       check: btnCheck.textContent
+        title: btnTitle.textContent, check: btnCheck.textContent
       };
+
       const activeBtn = { optimize: btnOptimize, translate: btnTranslate, title: btnTitle, check: btnCheck }[actionType];
       const statusKey = { optimize: 'status_processing', translate: 'status_translating', title: 'status_generating', check: 'status_checking' }[actionType];
 
       allBtns.forEach(b => b.disabled = true);
       activeBtn.textContent = instanceT(statusKey);
-      // Also show the task status in the message area
+
+      // 處理中狀態
       showMessage(instanceT(statusKey), 'info');
 
       const settings = await storageGet(['optimizePrompt', 'titlePrompt', 'checkPrompt', 'translateLang']);
       let prompt = '';
-      if (actionType === 'optimize')  prompt = settings.optimizePrompt || I18N.getDefaultPrompts(currentLang).optimize;
-      else if (actionType === 'title') prompt = settings.titlePrompt   || I18N.getDefaultPrompts(currentLang).title;
+
+      if (actionType === 'optimize') prompt = settings.optimizePrompt || I18N.getDefaultPrompts(currentLang).optimize;
+      else if (actionType === 'title') prompt = settings.titlePrompt || I18N.getDefaultPrompts(currentLang).title;
       else if (actionType === 'translate') prompt = `Translate to ${settings.translateLang || 'English'}: \n\n${text}`;
       else if (actionType === 'check') {
         prompt = settings.checkPrompt || '';
@@ -344,8 +366,8 @@
               showMessage(instanceT('msg_success_title') + input.value, 'success');
             }
           } else if (actionType === 'check') {
-            showMessage(result, 'info');
-            msgArea.style.whiteSpace = 'pre-wrap';
+            // 使用 success 樣式顯示綠色檢查結果
+            showMessage(result, 'success');
           } else {
             activeBackup = { bodyEl: body, html: body.innerHTML };
             updateComposeBody(body, result);
@@ -353,12 +375,11 @@
               ? instanceT('msg_success_trans') + (settings.translateLang || 'English')
               : instanceT('msg_success_opt'), 'success');
 
-            // Restore button
             backupArea.innerHTML = '';
             const restoreBtn = createElement('button', { textContent: instanceT('backup_restore') }, {
-              marginTop: '0', marginBottom: '8px', padding: '4px 10px', fontSize: '11px',
-              backgroundColor: '#f1f3f4', border: '1px solid #dadce0', borderRadius: '4px',
-              cursor: 'pointer', color: '#3c4043'
+              margin: '0', padding: '6px 12px', fontSize: '12px',
+              backgroundColor: '#f1f3f4', border: '1px solid #dadce0', borderRadius: '6px',
+              cursor: 'pointer', color: '#3c4043', fontWeight: '600'
             });
             restoreBtn.onclick = () => {
               if (activeBackup?.bodyEl?.isConnected) {
@@ -368,8 +389,7 @@
               clearUI();
             };
             backupArea.append(restoreBtn);
-            backupArea.style.maxHeight = '60px';
-            backupArea.style.padding = '0 14px 8px';
+            backupArea.style.display = 'block';
           }
         } else {
           showMessage(instanceT('msg_error_api') + response.error, 'error');
@@ -377,17 +397,15 @@
       });
     }
 
-    // --- Language Update (called globally) ---
     function updateLanguage(newLang) {
       currentLang = newLang;
       headerTitle.textContent = titleText();
       btnOptimize.textContent = instanceT('btn_optimize');
       btnTranslate.textContent = instanceT('btn_translate');
-      btnTitle.textContent    = instanceT('btn_title');
-      btnCheck.textContent    = instanceT('btn_check');
+      btnTitle.textContent = instanceT('btn_title');
+      btnCheck.textContent = instanceT('btn_check');
     }
 
-    // --- Destroy (when compose window closes) ---
     function destroy() {
       popup.remove();
       bubble.remove();
@@ -399,10 +417,7 @@
   }
 
   // --- Scanner ---
-
   function scanAndInject() {
-    // Deduplicate: if two selectors match nested elements (e.g. [role="dialog"] contains .M9),
-    // keep only the outermost element to avoid creating duplicate popups.
     const allCandidates = Array.from(document.querySelectorAll(SELECTORS.COMPOSE_WINDOW));
     const liveWindows = new Set(
       allCandidates.filter(win =>
@@ -410,14 +425,12 @@
       )
     );
 
-    // 1. Remove popups whose compose window is gone
     windowPopupMap.forEach((instance, win) => {
       if (!liveWindows.has(win) || !win.isConnected) {
         instance.destroy();
       }
     });
 
-    // 2. Create popups for new windows
     liveWindows.forEach(win => {
       if (win.hasAttribute(ATTR_INJECTED)) return;
       if (!win.querySelector(SELECTORS.BODY_EDITOR)) return;
