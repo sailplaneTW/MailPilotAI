@@ -383,8 +383,12 @@
             });
             restoreBtn.onclick = () => {
               if (activeBackup?.bodyEl?.isConnected) {
+                // 直接還原完整 HTML（保留換行、顏色、粗體等格式）
                 activeBackup.bodyEl.innerHTML = activeBackup.html;
-                updateComposeBody(activeBackup.bodyEl, extractCleanText(activeBackup.bodyEl));
+                // 通知 Gmail 內容已變更（不透過 updateComposeBody，避免格式被轉成純文字）
+                ['input', 'change'].forEach(evt =>
+                  activeBackup.bodyEl.dispatchEvent(new Event(evt, { bubbles: true }))
+                );
               }
               clearUI();
             };
