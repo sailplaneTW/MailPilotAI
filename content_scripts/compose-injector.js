@@ -417,7 +417,7 @@
   }
 
   // --- Scanner ---
-  function scanAndInject() {
+  async function scanAndInject() {
     const allCandidates = Array.from(document.querySelectorAll(SELECTORS.COMPOSE_WINDOW));
     const liveWindows = new Set(
       allCandidates.filter(win =>
@@ -430,6 +430,10 @@
         instance.destroy();
       }
     });
+
+    // 若尚未設定 API Key，不注入 popup
+    const { apiKey } = await storageGet(['apiKey']);
+    if (!apiKey) return;
 
     liveWindows.forEach(win => {
       if (win.hasAttribute(ATTR_INJECTED)) return;
