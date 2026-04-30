@@ -56,8 +56,11 @@
 
   /**
    * Show a floating notice near the send area with the AI check result.
+   * @param {string} resultText
+   * @param {boolean} isError
+   * @param {Element|null} sendBtn - 用來尋找對應的 compose window，以便同步清除 notice
    */
-  function showCheckResult(resultText, isError = false) {
+  function showCheckResult(resultText, isError = false, sendBtn = null) {
     document.querySelectorAll('.mp-check-notice').forEach(el => el.remove());
 
     // 1. 最外層容器：嚴格限制尺寸與隱藏溢出
@@ -68,9 +71,9 @@
       bottom: '80px',
       right: '20px',
       width: '400px',
-      maxWidth: '90vw',    // 增加響應式防呆，避免小螢幕破版
-      maxHeight: '60vh',   // 限制最大高度
-      display: 'flex',     // 啟用 Flexbox 排版
+      maxWidth: '90vw',
+      maxHeight: '60vh',
+      display: 'flex',
       flexDirection: 'column',
       backgroundColor: isError ? '#fce8e6' : '#e6f4ea',
       border: `1px solid ${isError ? '#f5c6c2' : '#b7dfbf'}`,
@@ -78,7 +81,7 @@
       boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
       zIndex: '9999999',
       fontFamily: 'Google Sans, system-ui, sans-serif',
-      overflow: 'hidden'   // [關鍵] 絕對不允許超出這個圓角框
+      overflow: 'hidden'
     });
 
     // 2. 頂部標題列：包含標題與關閉按鈕，不隨捲動移動
@@ -92,7 +95,7 @@
       fontWeight: 'bold',
       fontSize: '14px',
       color: isError ? '#d93025' : '#188038',
-      flexShrink: '0',     // [關鍵] 確保標題列不會被捲動區擠壓
+      flexShrink: '0',
       backgroundColor: isError ? '#fce8e6' : '#e6f4ea'
     });
 
@@ -118,22 +121,35 @@
     const content = document.createElement('div');
     Object.assign(content.style, {
       padding: '12px 16px',
-      overflowY: 'auto',   // [關鍵] 這裡才是真正產生垂直捲軸的地方
+      overflowY: 'auto',
       fontSize: '13px',
       lineHeight: '1.6',
       color: isError ? '#d93025' : '#188038',
       whiteSpace: 'pre-wrap',
       wordBreak: 'break-word',
-      flex: '1 1 auto'     // [關鍵] 填滿外層剩下的空間
+      flex: '1 1 auto'
     });
 
-    // 移除原有字串前面的標題，避免重複顯示 (因為已經在 header 顯示過了)
+    // 移除原有字串前面的標題，避免重複顯示
     const cleanText = resultText.replace(/^🔍 .*?\n\n/, '');
     content.textContent = cleanText;
 
     notice.appendChild(header);
     notice.appendChild(content);
     document.body.appendChild(notice);
+
+    // --- 生命週期綁定：compose window 關閉時自動移除 notice ---
+    const composeWin = sendBtn?.closest('[role="dialog"], .M9');
+    if (composeWin) {
+      const observer = new MutationObserver(() => {
+        if (!composeWin.isConnected) {
+          notice.remove();
+          observer.disconnect();
+        }
+      });
+      // 監聽 body 的子節點變化（Gmail 關閉 compose 時會移除整個 dialog）
+      observer.observe(document.body, { childList: true, subtree: true });
+    }
   }
 
   /**
@@ -149,9 +165,9 @@
         { action: 'CALL_GEMINI_API', prompt: checkPrompt, content: text },
         (response) => {
           if (response?.success) {
-            showCheckResult(`🔍 ${t('title_check_result')}\n\n${response.data.trim()}`);
+            showCheckResult(`🔍 ${t('title_check_result')}\n\n${response.data.trim()}`, false, sendBtn);
           } else {
-            showCheckResult(`${t('msg_error_api')}${response?.error || 'Unknown error'}`, true);
+            showCheckResult(`${t('msg_error_api')}${response?.error || 'Unknown error'}`, true, sendBtn);
           }
           resolve();
         }
