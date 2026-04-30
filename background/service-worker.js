@@ -16,6 +16,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
     return true; // Keep async channel open
   }
+
+  if (request.action === 'OPEN_OPTIONS_PAGE') {
+    chrome.runtime.openOptionsPage();
+    sendResponse({ success: true });
+  }
 });
 
 /**

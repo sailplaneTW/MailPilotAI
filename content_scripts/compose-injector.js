@@ -204,7 +204,7 @@
       padding: '0 4px', lineHeight: '1', color: '#5f6368',
       display: 'flex', alignItems: 'center'
     });
-    settingsBtn.onclick = () => chrome.runtime.openOptionsPage();
+    settingsBtn.onclick = () => chrome.runtime.sendMessage({ action: 'OPEN_OPTIONS_PAGE' });
 
     const minimizeBtn = createElement('button', { textContent: '—', title: 'Minimize' }, {
       background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px',
