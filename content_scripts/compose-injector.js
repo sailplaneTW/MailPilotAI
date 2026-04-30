@@ -193,12 +193,27 @@
       fontSize: '13px'
     });
 
-    const minimizeBtn = createElement('button', { textContent: '—', title: 'Minimize' }, {
-      background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px',
-      padding: '0 4px', lineHeight: '1', color: '#5f6368'
+    const btnGroup = createElement('div', {}, {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px'
     });
 
-    header.append(headerTitle, minimizeBtn);
+    const settingsBtn = createElement('button', { textContent: '⚙️', title: 'Settings' }, {
+      background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px',
+      padding: '0 4px', lineHeight: '1', color: '#5f6368',
+      display: 'flex', alignItems: 'center'
+    });
+    settingsBtn.onclick = () => chrome.runtime.openOptionsPage();
+
+    const minimizeBtn = createElement('button', { textContent: '—', title: 'Minimize' }, {
+      background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px',
+      padding: '0 4px', lineHeight: '1', color: '#5f6368',
+      display: 'flex', alignItems: 'center'
+    });
+
+    btnGroup.append(settingsBtn, minimizeBtn);
+    header.append(headerTitle, btnGroup);
     popup.append(header);
 
     // --- Action Buttons ---
